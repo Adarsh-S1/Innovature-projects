@@ -24,6 +24,7 @@ jobs:
       with:
         python-version: "3.11"
         cache: "pip"
+        cache-dependency-path: Python_programming_assignment/requirements.txt
 
     - name: Install dependencies
       run: |
