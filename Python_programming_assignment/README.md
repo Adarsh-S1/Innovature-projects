@@ -2,6 +2,10 @@
 
 A production-ready FastAPI application for user authentication, CSV file uploads, and data cleaning operations with Supabase integration.
 
+# LINK : https://fastapi-csv-manager.onrender.com/docs
+
+Use this link for testing the API.
+
 ## Features
 
 - **User Authentication** — Registration, login, logout, password reset, and user profile with `bcrypt` password hashing, JWT tokens, and token blocklisting.
