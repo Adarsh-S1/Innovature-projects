@@ -2,9 +2,18 @@
 
 A production-ready FastAPI application for user authentication, CSV file uploads, and data cleaning operations with Supabase integration.
 
-# LINK : https://fastapi-csv-manager.onrender.com/docs
 
-Use this link for testing the API.
+<h2 align="center">🔗 API LINK</h2>
+
+<p align="center">
+  <a href="https://fastapi-csv-manager.onrender.com/docs">
+    <img src="https://img.shields.io/badge/🚀-Live_API_Docs-2ea44f?style=for-the-badge" />
+  </a>
+</p>
+
+<p align="center">
+  Use this link to test the API directly via Swagger UI.
+</p>
 
 ## Features
 
