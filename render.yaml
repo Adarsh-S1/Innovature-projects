@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: fastapi-csv-manager
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    rootDir: "Python_programming_assignment"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: UVICORN_PORT
+        fromService:
+          type: web
+          name: fastapi-csv-manager
+          envVarKey: PORT
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
