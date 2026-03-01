@@ -4,7 +4,7 @@ import io
 def test_upload_csv_success(client, db_session):
     # Register and login to get token
     client.post("/auth/register", json={"email": "test@example.com", "password": "password"})
-    login_res = client.post("/auth/login", json={"email": "test@example.com", "password": "password"})
+    login_res = client.post("/auth/login", data={"username": "test@example.com", "password": "password"})
     token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -21,7 +21,7 @@ def test_upload_csv_success(client, db_session):
 
 def test_upload_invalid_extension(client, db_session):
     client.post("/auth/register", json={"email": "test@example.com", "password": "password"})
-    login_res = client.post("/auth/login", json={"email": "test@example.com", "password": "password"})
+    login_res = client.post("/auth/login", data={"username": "test@example.com", "password": "password"})
     token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
