@@ -1,0 +1,40 @@
+name: FastAPI Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Python_programming_assignment
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: "pip"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Pytest
+      run: |
+        pytest -v tests/
+      env:
+        DATABASE_URL: "sqlite:///:memory:"
+        SUPABASE_URL: "https://mock.supabase.co"
+        SUPABASE_KEY: "mock-key"
+        JWT_SECRET_KEY: "mock-secret"
