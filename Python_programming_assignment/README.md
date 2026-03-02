@@ -59,12 +59,23 @@ A production-ready FastAPI application for user authentication, CSV file uploads
 3. **Supabase Configuration:**
    Ensure you have a corresponding database schema and a Supabase Storage bucket created (e.g., `csv-uploads`).
 
-4. **Run the application:**
+4. **Run the application locally:**
    ```bash
    uvicorn app.main:app --reload
    ```
 
-5. **Open Swagger docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
+5. **Run the application via Docker:**
+   You can run the pre-built Docker image using your `.env` file credentials:
+   ```bash
+   docker run -p 8000:8000 --env-file .env adarshs2004/fastapi-manager
+   ```
+   Or build it yourself manually using the included `Dockerfile`:
+   ```bash
+   docker build -t my-fastapi-app .
+   docker run -p 8000:8000 --env-file .env my-fastapi-app
+   ```
+
+6. **Open Swagger docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ## API Endpoints
 

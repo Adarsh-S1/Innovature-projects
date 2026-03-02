@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Python specifics
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Jupyter Notebook
+*.ipynb
+.ipynb_checkpoints
+
+# Virtual environments
+venv/
+env/
+.env
+.venv
+miniconda3/
+
+# Testing framework
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE configurations
+.vscode/
+.idea/
+
+# Logging
+*.log
