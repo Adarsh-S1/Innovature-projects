@@ -4,7 +4,7 @@ Pydantic schemas for CSV file upload responses.
 
 from datetime import datetime
 from typing import Dict, List
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 
 class FileUploadResponse(BaseModel):
@@ -22,8 +22,12 @@ class FileInfo(BaseModel):
     """Schema representing a single uploaded file entry."""
 
     file_name: str
-    #storage_path: str
     uploaded_at: datetime
+
+    @field_serializer("uploaded_at")
+    def format_uploaded_at(self, value: datetime, _info) -> str:
+        """Return a human-readable timestamp, e.g. '06 Mar 2026, 09:12 PM'."""
+        return value.strftime("%d %b %Y, %I:%M %p")
 
     class Config:
         from_attributes = True

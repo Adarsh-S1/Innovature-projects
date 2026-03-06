@@ -4,6 +4,7 @@ Fetches a previously uploaded CSV, applies a cleaning operation, and uploads the
 """
 
 import io
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 import pandas as pd
@@ -139,13 +140,25 @@ def clean_csv(
             detail=f"Failed to upload cleaned file to storage: {str(e)}",
         )
 
-    # --- Save cleaned file metadata to database ---
-    cleaned_record = FileUpload(
-        user_id=current_user.id,
-        file_name=cleaned_file_name,
-        storage_path=cleaned_storage_path,
+    # --- Upsert cleaned file metadata in database ---
+    existing_cleaned = (
+        db.query(FileUpload)
+        .filter(
+            FileUpload.user_id == current_user.id,
+            FileUpload.file_name == cleaned_file_name,
+        )
+        .first()
     )
-    db.add(cleaned_record)
+    if existing_cleaned:
+        existing_cleaned.storage_path = cleaned_storage_path
+        existing_cleaned.uploaded_at = datetime.now(timezone.utc)
+    else:
+        cleaned_record = FileUpload(
+            user_id=current_user.id,
+            file_name=cleaned_file_name,
+            storage_path=cleaned_storage_path,
+        )
+        db.add(cleaned_record)
     db.commit()
 
     return CleanResponse(

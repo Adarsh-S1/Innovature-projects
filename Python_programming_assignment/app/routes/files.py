@@ -5,6 +5,7 @@ Provides endpoints to list and download user files.
 """
 
 import io
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -83,13 +84,25 @@ async def upload_csv(
             detail=f"Failed to upload file to storage: {str(e)}",
         )
 
-    # --- Save metadata to database ---
-    file_record = FileUpload(
-        user_id=current_user.id,
-        file_name=file.filename,
-        storage_path=storage_path,
+    # --- Upsert metadata in database ---
+    existing_record = (
+        db.query(FileUpload)
+        .filter(
+            FileUpload.user_id == current_user.id,
+            FileUpload.file_name == file.filename,
+        )
+        .first()
     )
-    db.add(file_record)
+    if existing_record:
+        existing_record.storage_path = storage_path
+        existing_record.uploaded_at = datetime.now(timezone.utc)
+    else:
+        file_record = FileUpload(
+            user_id=current_user.id,
+            file_name=file.filename,
+            storage_path=storage_path,
+        )
+        db.add(file_record)
     db.commit()
 
     # --- Build analysis response ---
