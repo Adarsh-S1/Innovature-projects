@@ -1,10 +1,12 @@
 """
 CSV file upload route.
 Validates file type/size, uploads to Supabase Storage, saves metadata, and returns analysis.
+Provides endpoints to list and download user files.
 """
 
 import io
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import pandas as pd
 
@@ -13,7 +15,7 @@ from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.models.file import FileUpload
-from app.schemas.file import FileUploadResponse
+from app.schemas.file import FileUploadResponse, FileListResponse, FileInfo
 from app.supabase_client import supabase
 
 settings = get_settings()
@@ -98,4 +100,91 @@ async def upload_csv(
         column_names=df.columns.tolist(),
         data_types={col: str(dtype) for col, dtype in df.dtypes.items()},
         missing_values=df.isnull().sum().to_dict(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# List uploaded files
+# ---------------------------------------------------------------------------
+@router.get(
+    "/list",
+    response_model=FileListResponse,
+    summary="List all files uploaded by the current user",
+)
+def list_user_files(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return the names, storage paths, and upload timestamps of every file
+    that the authenticated user has uploaded or cleaned.
+    """
+    file_records = (
+        db.query(FileUpload)
+        .filter(FileUpload.user_id == current_user.id)
+        .order_by(FileUpload.uploaded_at.desc())
+        .all()
+    )
+
+    files = [
+        FileInfo(
+            file_name=record.file_name,
+            #storage_path=record.storage_path,
+            uploaded_at=record.uploaded_at,
+        )
+        for record in file_records
+    ]
+
+    return FileListResponse(total_files=len(files), files=files)
+
+
+# ---------------------------------------------------------------------------
+# Download a file
+# ---------------------------------------------------------------------------
+@router.get(
+    "/download/{file_name}",
+    summary="Download a file uploaded by the current user",
+)
+def download_user_file(
+    file_name: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Download a specific file belonging to the authenticated user from
+    Supabase Storage and return it as a CSV attachment.
+    """
+    # --- Find the file record in the database ---
+    file_record = (
+        db.query(FileUpload)
+        .filter(
+            FileUpload.user_id == current_user.id,
+            FileUpload.file_name == file_name,
+        )
+        .first()
+    )
+    if not file_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File '{file_name}' not found for the current user.",
+        )
+
+    # --- Download the file from Supabase Storage ---
+    try:
+        file_bytes = supabase.storage.from_(settings.SUPABASE_BUCKET_NAME).download(
+            file_record.storage_path
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to download file from storage: {str(e)}",
+        )
+
+    # --- Stream the file back to the client ---
+    return StreamingResponse(
+        io.BytesIO(file_bytes),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{file_name}"'
+        },
     )
