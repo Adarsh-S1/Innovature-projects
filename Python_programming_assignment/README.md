@@ -18,7 +18,8 @@ A production-ready FastAPI application for user authentication, CSV file uploads
 ## Features
 
 - **User Authentication** — Registration, login, logout, password reset, and user profile with `bcrypt` password hashing, JWT tokens, and token blocklisting.
-- **CSV File Upload** — Upload CSV files to Supabase Storage with file validation (size and type restrictions).
+- **CSV File Upload** — Upload CSV files to Supabase Storage with file validation (size and type restrictions). Re-uploading the same file updates the existing record (upsert).
+- **File Listing & Download** — View all uploaded/cleaned files and download any of them directly from Supabase Storage.
 - **Data Cleaning** — Apply predefined data cleaning operations to uploaded CSV files using `pandas`:
   - Drop missing values
   - Fill missing values with column mean
@@ -93,7 +94,9 @@ A production-ready FastAPI application for user authentication, CSV file uploads
 | Method | Endpoint | Auth Required | Description |
 |--------|----------|---------------|-------------|
 | POST | `/files/upload` | ✓ | Upload a CSV file up to 5MB to Supabase Storage |
-| POST | `/cleaning/clean` | ✓ | Perform a cleaning operation on an uploaded CSV file |
+| GET | `/files/list` | ✓ | List all uploaded and cleaned files for the current user |
+| GET | `/files/download/{file_name}` | ✓ | Download a specific file from Supabase Storage |
+| POST | `/files/clean` | ✓ | Perform a cleaning operation on an uploaded CSV file |
 
 ## Cleaning Operations
 
