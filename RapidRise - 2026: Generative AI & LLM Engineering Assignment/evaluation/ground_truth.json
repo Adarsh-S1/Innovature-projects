@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "question": "What mechanism does the Transformer model use instead of recurrence and convolutions to handle sequence dependencies?",
+    "ground_truth_answer": "The Transformer model uses a self-attention mechanism (also called 'Scaled Dot-Product Attention') instead of recurrence and convolutions. It computes attention weights by taking the dot product of queries and keys, scaling by the square root of the key dimension, and applying softmax to get weights over the values. Multi-head attention is used to allow the model to attend to different representation subspaces.",
+    "source_document": "attention_is_all_you_need.pdf"
+  },
+  {
+    "id": 2,
+    "question": "What are the two pre-training objectives used by BERT?",
+    "ground_truth_answer": "BERT uses two pre-training objectives: (1) Masked Language Modeling (MLM), where 15% of input tokens are randomly masked and the model predicts them, and (2) Next Sentence Prediction (NSP), where the model predicts whether two sentences appear consecutively in the original text. These objectives allow BERT to learn deep bidirectional representations.",
+    "source_document": "bert.pdf"
+  },
+  {
+    "id": 3,
+    "question": "How does LoRA achieve parameter-efficient fine-tuning of large language models?",
+    "ground_truth_answer": "LoRA (Low-Rank Adaptation) freezes the pre-trained model weights and injects trainable low-rank decomposition matrices into each layer of the Transformer architecture. Instead of updating the full weight matrix W, it learns a low-rank update ΔW = BA where B and A are much smaller matrices. This reduces the number of trainable parameters by up to 10,000x while maintaining comparable performance to full fine-tuning.",
+    "source_document": "lora.pdf"
+  },
+  {
+    "id": 4,
+    "question": "How does the RAG (Retrieval-Augmented Generation) model combine retrieval with generation?",
+    "ground_truth_answer": "RAG combines a pre-trained retriever (based on Dense Passage Retrieval using BERT) with a pre-trained seq2seq generator (BART). Given an input query, the retriever fetches relevant documents from a non-parametric memory (a dense vector index of Wikipedia), and the generator conditions on both the input and the retrieved documents to produce the output. RAG can be trained end-to-end, with the retriever and generator jointly optimized.",
+    "source_document": "rag.pdf"
+  },
+  {
+    "id": 5,
+    "question": "What is Chain-of-Thought prompting and how does it improve LLM reasoning?",
+    "ground_truth_answer": "Chain-of-Thought (CoT) prompting is a technique where a few-shot prompt includes intermediate reasoning steps (a 'chain of thought') before the final answer. Instead of directly outputting an answer, the model is shown examples that decompose complex problems into step-by-step reasoning. This significantly improves performance on arithmetic, commonsense, and symbolic reasoning tasks, especially in large language models (100B+ parameters).",
+    "source_document": "chain_of_thought.pdf"
+  }
+]
