@@ -109,14 +109,14 @@ async def context_router(state: AgentState) -> dict:
 async def _llm_classify(
     query: str, history: List[Dict[str, Any]]
 ) -> dict | None:
-    """Use GPT-4o to classify the query. Returns None on failure."""
+    """Use Groq LLM to classify the query. Returns None on failure."""
     settings = get_settings()
 
     try:
-        from openai import AsyncOpenAI
+        from groq import AsyncGroq
 
-        client = AsyncOpenAI(
-            api_key=settings.OPENAI_API_KEY,
+        client = AsyncGroq(
+            api_key=settings.GROQ_API_KEY,
             max_retries=2,
             timeout=15,
         )
@@ -135,11 +135,12 @@ async def _llm_classify(
             user_content = f"Conversation history:\n{history_text}\n\n{user_content}"
 
         response = await client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
+            model=settings.GROQ_MODEL,
             messages=[
                 {"role": "system", "content": _ROUTER_SYSTEM_PROMPT},
                 {"role": "user", "content": user_content},
             ],
+            response_format={"type": "json_object"},
             max_tokens=400,
             temperature=0.0,
         )

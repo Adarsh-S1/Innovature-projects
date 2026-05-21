@@ -126,14 +126,14 @@ async def _llm_synthesize(
     image_text: str,
     history: List[Dict[str, Any]],
 ) -> str | None:
-    """Use GPT-4o to synthesize the final answer."""
+    """Use Groq LLM to synthesize the final answer."""
     settings = get_settings()
 
     try:
-        from openai import AsyncOpenAI
+        from groq import AsyncGroq
 
-        client = AsyncOpenAI(
-            api_key=settings.OPENAI_API_KEY,
+        client = AsyncGroq(
+            api_key=settings.GROQ_API_KEY,
             max_retries=2,
             timeout=30,
         )
@@ -162,7 +162,7 @@ async def _llm_synthesize(
         ]
 
         response = await client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
+            model=settings.GROQ_MODEL,
             messages=messages,
             max_tokens=1500,
             temperature=0.2,

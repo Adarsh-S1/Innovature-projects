@@ -40,11 +40,13 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_MINUTES: int = 60
 
-    # ── OpenAI ───────────────────────────────────────────────────────────
-    OPENAI_API_KEY: str = Field(default="", description="OpenAI API key")
+    # ── Text Models (Groq + Local Embeddings) ────────────────────────────
+    GROQ_API_KEY: str = Field(default="", description="Groq API key")
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    OPENAI_API_KEY: str = Field(default="", description="OpenAI API key (deprecated)")
     OPENAI_MODEL: str = "gpt-4o"
-    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-large"
-    OPENAI_EMBEDDING_DIMENSIONS: int = 3072
+    OPENAI_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    OPENAI_EMBEDDING_DIMENSIONS: int = 384
     OPENAI_MAX_RETRIES: int = 3
     OPENAI_TIMEOUT: int = 60
 

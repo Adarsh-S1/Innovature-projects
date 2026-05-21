@@ -255,14 +255,14 @@ async def _llm_quality_check(
     query: str,
     chunks: List[Dict[str, Any]],
 ) -> dict | None:
-    """Optional LLM-based quality scoring using GPT-4o-mini."""
+    """Optional LLM-based quality scoring using Groq."""
     settings = get_settings()
 
     try:
-        from openai import AsyncOpenAI
+        from groq import AsyncGroq
 
-        client = AsyncOpenAI(
-            api_key=settings.OPENAI_API_KEY,
+        client = AsyncGroq(
+            api_key=settings.GROQ_API_KEY,
             max_retries=1,
             timeout=10,
         )
@@ -272,7 +272,7 @@ async def _llm_quality_check(
         )
 
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",  # Use mini for cost efficiency
+            model=settings.GROQ_MODEL,
             messages=[
                 {"role": "system", "content": _QUALITY_SYSTEM_PROMPT},
                 {
@@ -284,6 +284,7 @@ async def _llm_quality_check(
                     ),
                 },
             ],
+            response_format={"type": "json_object"},
             max_tokens=300,
             temperature=0.0,
         )

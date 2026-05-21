@@ -122,26 +122,12 @@ async def hybrid_search(state: AgentState) -> dict:
 
 
 async def _embed_query(query: str) -> List[float] | None:
-    """Generate embedding for the query text."""
-    settings = get_settings()
-
+    """Generate embedding for the query text using local model."""
     try:
-        from openai import AsyncOpenAI
-
-        client = AsyncOpenAI(
-            api_key=settings.OPENAI_API_KEY,
-            max_retries=2,
-            timeout=15,
-        )
-
-        response = await client.embeddings.create(
-            model=settings.OPENAI_EMBEDDING_MODEL,
-            input=query,
-            dimensions=settings.OPENAI_EMBEDDING_DIMENSIONS,
-        )
-
-        return response.data[0].embedding
-
+        from app.ingestion.embedder import TextEmbedder
+        embedder = TextEmbedder()
+        # In a real async app we'd run this in a threadpool, but for now blocking is fine
+        return embedder.embed_text(query)
     except Exception as e:
         logger.error("query_embedding_failed", error=str(e))
         return None
