@@ -1,6 +1,9 @@
 """
 LangGraph graph definition — wires up the 5-agent pipeline.
-Stub implementation; agent node functions will be implemented in Part 4.
+
+Graph topology:
+  context_router → hybrid_search → [visual_specialist?] → answer_synthesizer
+  → quality_guard → [loopback to hybrid_search | END]
 """
 
 from langgraph.graph import END, StateGraph
@@ -11,66 +14,65 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-# ── Stub Agent Nodes ─────────────────────────────────────────────────────
-# These will be replaced with real implementations in Part 4.
+# ── Import real agent implementations ────────────────────────────────────
+
+from app.agents.context_router import context_router
+from app.agents.hybrid_search import hybrid_search
+from app.agents.visual_specialist import visual_specialist
+from app.agents.answer_synthesizer import answer_synthesizer
+from app.agents.quality_guard import quality_guard
+
+
+# ── Sync wrappers for LangGraph nodes ────────────────────────────────────
+# LangGraph expects sync or async; we wrap async agents uniformly.
+
+import asyncio
+
+
+def _run_async(coro):
+    """Run an async coroutine from a sync context."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Already in an async context — use a new thread
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    else:
+        return asyncio.run(coro)
 
 
 def context_router_agent(state: AgentState) -> dict:
     """Agent 1: Parse query intent and route."""
     logger.info("agent_invoked", agent="context_router", query=state.get("user_query"))
-    return {
-        "query_intent": "multimodal",
-        "needs_image": True,
-        "query_keywords": [],
-        "query_concepts": [],
-        "query_type": "general",
-        "reformulated_query": state.get("user_query", ""),
-        "bm25_weight": 0.4,
-        "vector_weight": 0.6,
-    }
+    return _run_async(context_router(state))
 
 
 def hybrid_search_agent(state: AgentState) -> dict:
     """Agent 2: Execute hybrid BM25 + vector search."""
     logger.info("agent_invoked", agent="hybrid_search")
-    return {
-        "retrieved_chunks": [],
-        "rerank_scores": [],
-    }
+    return _run_async(hybrid_search(state))
 
 
 def visual_specialist_agent(state: AgentState) -> dict:
     """Agent 3: Cross-modal image retrieval via CLIP."""
     logger.info("agent_invoked", agent="visual_specialist")
-    return {
-        "retrieved_images": [],
-    }
+    return _run_async(visual_specialist(state))
 
 
 def answer_synthesizer_agent(state: AgentState) -> dict:
     """Agent 4: Synthesize final answer from chunks + images."""
     logger.info("agent_invoked", agent="answer_synthesizer")
-    return {
-        "draft_answer": "This is a stub answer.",
-        "cited_sources": [],
-    }
+    return _run_async(answer_synthesizer(state))
 
 
 def quality_guard_agent(state: AgentState) -> dict:
     """Agent 5: Score answer quality and decide approve/loopback."""
     logger.info("agent_invoked", agent="quality_guard")
-    retry_count = state.get("retry_count", 0)
-    return {
-        "quality_score": 0.85,
-        "quality_issues": [],
-        "final_answer": state.get("draft_answer", ""),
-        "retry_count": retry_count,
-        "response_images": state.get("retrieved_images", []),
-        "response_metadata": {
-            "query_intent": state.get("query_intent"),
-            "retry_count": retry_count,
-        },
-    }
+    return _run_async(quality_guard(state))
 
 
 # ── Routing Functions ────────────────────────────────────────────────────
@@ -88,6 +90,11 @@ def route_after_quality(state: AgentState) -> str:
     score = state.get("quality_score", 1.0)
     retries = state.get("retry_count", 0)
     if score < 0.75 and retries < 2:
+        logger.info(
+            "quality_loopback_triggered",
+            score=score,
+            retry_count=retries,
+        )
         return "hybrid_search"
     return END
 
@@ -96,7 +103,7 @@ def route_after_quality(state: AgentState) -> str:
 
 
 def build_graph() -> StateGraph:
-    """Construct and return the compiled LangGraph workflow."""
+    """Construct and return the LangGraph workflow (not yet compiled)."""
     workflow = StateGraph(AgentState)
 
     # Register nodes
@@ -139,4 +146,7 @@ def build_graph() -> StateGraph:
 # Pre-build the graph (compiled at import time for re-use)
 graph = build_graph()
 
-logger.info("langgraph_initialized", nodes=list(graph.nodes.keys()) if hasattr(graph, 'nodes') else [])
+logger.info(
+    "langgraph_initialized",
+    nodes=list(graph.nodes.keys()) if hasattr(graph, 'nodes') else [],
+)
