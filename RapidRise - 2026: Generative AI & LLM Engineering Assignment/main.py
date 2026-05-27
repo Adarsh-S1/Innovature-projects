@@ -56,11 +56,11 @@ def setup():
     print("=" * 70)
 
     # Step 1: Download PDFs
-    print("\n[Step 1/4] Downloading PDF documents...")
+    print("\n[Step 1/5] Downloading PDF documents...")
     download_pdfs()
 
     # Step 2: Process documents
-    print("\n[Step 2/4] Processing PDFs (extracting text and chunking)...")
+    print("\n[Step 2/5] Processing PDFs (extracting text and chunking)...")
     import document_processor
     chunks = document_processor.process_all_documents()
 
@@ -69,18 +69,25 @@ def setup():
         sys.exit(1)
 
     # Step 3: Setup database
-    print("\n[Step 3/4] Setting up vector database...")
+    print("\n[Step 3/5] Setting up vector database...")
     import vector_db
     vector_db.setup_database()
     vector_db.clear_database()
 
     # Step 4: Ingest chunks
-    print("\n[Step 4/4] Ingesting chunks into vector database...")
+    print("\n[Step 4/5] Ingesting chunks into vector database...")
     vector_db.insert_chunks(chunks)
 
     count = vector_db.get_chunk_count()
+
+    # Step 5: Auto-generate document topics for the router
+    print(f"\n[Step 5/5] Auto-generating document topics for router...")
+    topics = document_processor.generate_document_topics()
+    # Reload topics into config so the current session uses them
+    config.DOCUMENT_TOPICS = topics if topics else config.DOCUMENT_TOPICS
+
     print(f"\n{'='*70}")
-    print(f"  SETUP COMPLETE — {count} chunks in database")
+    print(f"  SETUP COMPLETE — {count} chunks in database, {len(config.DOCUMENT_TOPICS)} topics generated")
     print(f"{'='*70}")
 
 

@@ -37,6 +37,14 @@ def setup_database():
         CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding
         ON document_chunks USING hnsw (embedding vector_cosine_ops);
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS document_topics (
+            id SERIAL PRIMARY KEY,
+            source_document TEXT NOT NULL,
+            topic TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
     conn.commit()
     cur.close()
     conn.close()
@@ -47,6 +55,7 @@ def clear_database():
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("DELETE FROM document_chunks;")
+    cur.execute("DELETE FROM document_topics;")
     conn.commit()
     cur.close()
     conn.close()
@@ -109,6 +118,45 @@ def get_chunk_count() -> int:
     cur.close()
     conn.close()
     return count
+
+
+def insert_topics(topics: list[dict]):
+    """
+    Insert document topics into the database.
+
+    Args:
+        topics: List of dicts with keys: source_document, topic
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    for t in topics:
+        cur.execute(
+            "INSERT INTO document_topics (source_document, topic) VALUES (%s, %s)",
+            (t["source_document"], t["topic"]),
+        )
+    conn.commit()
+    cur.close()
+    conn.close()
+    print(f"[VectorDB] Inserted {len(topics)} document topics.")
+
+
+def load_topics() -> list[str]:
+    """
+    Load all document topics from the database.
+
+    Returns:
+        List of topic strings, or empty list if table is empty or doesn't exist.
+    """
+    try:
+        conn = get_connection(register_vec=False)
+        cur = conn.cursor()
+        cur.execute("SELECT topic FROM document_topics ORDER BY id;")
+        topics = [row[0] for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return topics
+    except Exception:
+        return []
 
 
 if __name__ == "__main__":

@@ -153,6 +153,84 @@ def process_all_documents(documents_dir: str | Path = config.DOCUMENTS_DIR) -> l
     return all_chunks
 
 
+# ─── Auto Topic Generation ───────────────────────────────────────────────────
+
+def generate_document_topics(
+    documents_dir: str | Path = config.DOCUMENTS_DIR,
+) -> list[str]:
+    """
+    Auto-generate a one-line topic summary for each PDF using the LLM.
+
+    Reads the first ~1500 characters (abstract/introduction) of each PDF,
+    sends them to the LLM, and saves the resulting topics to the database.
+
+    Args:
+        documents_dir: Path to the directory containing PDF files.
+
+    Returns:
+        List of topic strings (one per document).
+    """
+    import llm_client
+    import vector_db
+
+    documents_dir = Path(documents_dir)
+    pdf_files = sorted(documents_dir.glob("*.pdf"))
+
+    if not pdf_files:
+        print("[TopicGen] No PDF files found. Skipping topic generation.")
+        return []
+
+    topic_records = []
+
+    for pdf_path in pdf_files:
+        print(f"  [🔍] Extracting topic from {pdf_path.name}...")
+
+        # Extract the first ~1500 characters (abstract / introduction)
+        pages = extract_text_from_pdf(pdf_path)
+        intro_text = ""
+        for page in pages:
+            intro_text += page["text"] + "\n"
+            if len(intro_text) >= 1500:
+                break
+        intro_text = intro_text[:1500]
+
+        # Ask the LLM for a one-line topic summary
+        topic_prompt = (
+            "You are given the beginning of a research paper. "
+            "Produce a single concise sentence (max 15 words) that describes "
+            "the primary topic or contribution of this paper. "
+            "Respond with ONLY the sentence, nothing else.\n\n"
+            f"--- Paper excerpt ---\n{intro_text}"
+        )
+
+        try:
+            client = llm_client.get_client()
+            response = client.chat.completions.create(
+                model=config.LLM_MODEL,
+                messages=[{"role": "user", "content": topic_prompt}],
+                temperature=0.1,
+                max_tokens=64,
+            )
+            topic = response.choices[0].message.content.strip().strip('"').strip("'")
+            print(f"      → {topic}")
+        except Exception as e:
+            # Fallback: use filename as a rough topic
+            topic = pdf_path.stem.replace("_", " ").title()
+            print(f"      ⚠ LLM failed ({e}), using fallback: {topic}")
+
+        topic_records.append({
+            "source_document": pdf_path.name,
+            "topic": topic,
+        })
+
+    # Persist to database
+    vector_db.insert_topics(topic_records)
+    topics = [t["topic"] for t in topic_records]
+    print(f"[TopicGen] Generated {len(topics)} topics")
+
+    return topics
+
+
 if __name__ == "__main__":
     # Quick test: process all documents
     chunks = process_all_documents()

@@ -45,7 +45,9 @@ CHUNK_OVERLAP = 100       # overlap between consecutive chunks
 TOP_K_RESULTS = 5         # number of chunks to retrieve
 
 # ─── Document Topics (for router context) ────────────────────────────────────
-DOCUMENT_TOPICS = [
+# Topics are auto-generated during --setup and stored in the database.
+# The fallback list below is only used if the database is unavailable.
+_DEFAULT_DOCUMENT_TOPICS = [
     "Transformer architecture and self-attention mechanisms",
     "BERT pre-training (Masked Language Modeling, Next Sentence Prediction)",
     "GPT-2 language model and text generation",
@@ -54,3 +56,18 @@ DOCUMENT_TOPICS = [
     "LLaMA large language model family",
     "Chain-of-Thought (CoT) prompting and reasoning",
 ]
+
+
+def _load_document_topics() -> list[str]:
+    """Load auto-generated topics from the database, or fall back to defaults."""
+    try:
+        import vector_db
+        topics = vector_db.load_topics()
+        if topics:
+            return topics
+    except Exception:
+        pass
+    return _DEFAULT_DOCUMENT_TOPICS
+
+
+DOCUMENT_TOPICS = _load_document_topics()

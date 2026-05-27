@@ -29,3 +29,5 @@ model/
 
 documents/*
 test_results.md
+
+*.pdf
