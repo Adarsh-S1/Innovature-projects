@@ -59,15 +59,30 @@ class ImageProcessor:
         self._openai_client = None
         self._seen_hashes: set = set()
 
-    def _ensure_openai_client(self):
-        """Lazy-load OpenAI client."""
+    def _ensure_groq_client(self):
+        """Lazy-load Groq client."""
         if self._openai_client is None:
-            from openai import OpenAI
-            self._openai_client = OpenAI(
-                api_key=self._settings.OPENAI_API_KEY,
-                max_retries=self._settings.OPENAI_MAX_RETRIES,
-                timeout=self._settings.OPENAI_TIMEOUT,
+            from groq import Groq
+            self._openai_client = Groq(
+                api_key=self._settings.GROQ_API_KEY,
+                max_retries=1,
+                timeout=30,
             )
+
+    def _ensure_blip_model(self):
+        """Lazy-load BLIP model for local image captioning."""
+        if not hasattr(self, "_blip_model") or self._blip_model is None:
+            try:
+                import torch
+                from transformers import BlipProcessor, BlipForConditionalGeneration
+                device = self._settings.CLIP_DEVICE if torch.cuda.is_available() else "cpu"
+                logger.info("loading_blip_model", device=device)
+                self._blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+                self._blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to(device)
+                self._blip_device = device
+            except Exception as e:
+                logger.error("blip_model_load_failed", error=str(e))
+                self._blip_model = "dummy"
 
     def _ensure_clip_model(self):
         """Lazy-load CLIP model and preprocessing."""
@@ -232,34 +247,32 @@ class ImageProcessor:
         Generate caption, description, tags using GPT-4o Vision.
         Falls back to empty metadata if the API is unavailable.
         """
-        self._ensure_openai_client()
+        self._ensure_groq_client()
+        self._ensure_blip_model()
 
         try:
-            # Encode image to base64
-            b64_image = base64.b64encode(image_bytes).decode("utf-8")
-            mime_type = f"image/{extension}" if extension != "jpg" else "image/jpeg"
+            # 1. Get raw caption locally using BLIP
+            if getattr(self, "_blip_model", "dummy") == "dummy":
+                raw_caption = "A technical image from a manual"
+            else:
+                img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+                inputs = self._blip_processor(img, return_tensors="pt").to(self._blip_device)
+                out = self._blip_model.generate(**inputs, max_new_tokens=50)
+                raw_caption = self._blip_processor.decode(out[0], skip_special_tokens=True)
+
+            # 2. Use Groq text model to format it into the required JSON structure
+            prompt = (
+                f"I have an image from a technical manual. A local vision model described it as: '{raw_caption}'.\n\n"
+                "Based on this description, please generate the required JSON structure."
+            )
 
             response = self._openai_client.chat.completions.create(
-                model=self._settings.OPENAI_MODEL,
+                model=self._settings.GROQ_MODEL,
                 messages=[
                     {"role": "system", "content": _CAPTION_SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{mime_type};base64,{b64_image}",
-                                    "detail": "low",
-                                },
-                            },
-                            {
-                                "type": "text",
-                                "text": "Analyze this technical image and provide the JSON response.",
-                            },
-                        ],
-                    },
+                    {"role": "user", "content": prompt},
                 ],
+                response_format={"type": "json_object"},
                 max_tokens=500,
                 temperature=0.1,
             )

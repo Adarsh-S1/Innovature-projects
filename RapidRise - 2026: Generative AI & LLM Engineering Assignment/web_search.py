@@ -3,7 +3,7 @@ web_search.py — DuckDuckGo web search tool for out-of-scope queries.
 """
 
 import json
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 import llm_client
 
 

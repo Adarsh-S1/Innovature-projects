@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # ── Text Models (Groq + Local Embeddings) ────────────────────────────
     GROQ_API_KEY: str = Field(default="", description="Groq API key")
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
     OPENAI_API_KEY: str = Field(default="", description="OpenAI API key (deprecated)")
     OPENAI_MODEL: str = "gpt-4o"
     OPENAI_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP_TOKENS: int = 128
     MIN_IMAGE_WIDTH: int = 100
     MIN_IMAGE_HEIGHT: int = 100
-    MAX_CAPTION_LENGTH: int = 200
+    MAX_CAPTION_LENGTH: int = 300
     BATCH_EMBED_SIZE: int = 32
 
     # ── Retrieval ────────────────────────────────────────────────────────
