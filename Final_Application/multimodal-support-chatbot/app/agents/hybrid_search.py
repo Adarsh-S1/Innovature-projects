@@ -122,11 +122,10 @@ async def hybrid_search(state: AgentState) -> dict:
 
 
 async def _embed_query(query: str) -> List[float] | None:
-    """Generate embedding for the query text using local model."""
+    """Generate embedding for the query text using shared embedder singleton."""
     try:
-        from app.ingestion.embedder import TextEmbedder
-        embedder = TextEmbedder()
-        # In a real async app we'd run this in a threadpool, but for now blocking is fine
+        from app.core.shared import get_text_embedder
+        embedder = get_text_embedder()
         return embedder.embed_text(query)
     except Exception as e:
         logger.error("query_embedding_failed", error=str(e))

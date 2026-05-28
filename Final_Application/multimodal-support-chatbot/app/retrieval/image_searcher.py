@@ -165,19 +165,9 @@ class ImageSearcher:
             )
 
             # Parse JSON fields
-            keyword_tags = meta.get("keyword_tags", "[]")
-            if isinstance(keyword_tags, str):
-                try:
-                    keyword_tags = json.loads(keyword_tags)
-                except (json.JSONDecodeError, TypeError):
-                    keyword_tags = []
-
-            linked_chunk_ids = meta.get("linked_chunk_ids", "[]")
-            if isinstance(linked_chunk_ids, str):
-                try:
-                    linked_chunk_ids = json.loads(linked_chunk_ids)
-                except (json.JSONDecodeError, TypeError):
-                    linked_chunk_ids = []
+            from app.core.shared import parse_json_field
+            keyword_tags = parse_json_field(meta.get("keyword_tags", "[]"))
+            linked_chunk_ids = parse_json_field(meta.get("linked_chunk_ids", "[]"))
 
             scored_results.append(ImageSearchResult(
                 image_id=iid,
@@ -232,7 +222,8 @@ class ImageSearcher:
         try:
             collection.load()
 
-            expr = f'doc_id == "{doc_id_filter}"' if doc_id_filter else None
+            from app.core.sanitize import build_milvus_filter
+            expr = build_milvus_filter(doc_id=doc_id_filter)
 
             results = collection.search(
                 data=[query_clip_vector],
@@ -286,7 +277,8 @@ class ImageSearcher:
         try:
             collection.load()
 
-            expr = f'doc_id == "{doc_id_filter}"' if doc_id_filter else None
+            from app.core.sanitize import build_milvus_filter
+            expr = build_milvus_filter(doc_id=doc_id_filter)
 
             results = collection.search(
                 data=[query_text_vector],
@@ -380,19 +372,9 @@ class ImageSearcher:
                 + 0.10 * type_bonus
             )
 
-            keyword_tags = img.get("keyword_tags", [])
-            if isinstance(keyword_tags, str):
-                try:
-                    keyword_tags = json.loads(keyword_tags)
-                except (json.JSONDecodeError, TypeError):
-                    keyword_tags = []
-
-            linked_chunk_ids = img.get("linked_chunk_ids", [])
-            if isinstance(linked_chunk_ids, str):
-                try:
-                    linked_chunk_ids = json.loads(linked_chunk_ids)
-                except (json.JSONDecodeError, TypeError):
-                    linked_chunk_ids = []
+            from app.core.shared import parse_json_field
+            keyword_tags = parse_json_field(img.get("keyword_tags", []))
+            linked_chunk_ids = parse_json_field(img.get("linked_chunk_ids", []))
 
             scored_results.append(ImageSearchResult(
                 image_id=img.get("image_id", ""),

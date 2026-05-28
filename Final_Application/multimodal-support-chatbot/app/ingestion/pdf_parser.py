@@ -96,63 +96,7 @@ class PDFParser:
         except Exception as e:
             raise PDFParsingError(f"Failed to open PDF '{pdf_path}': {e}")
 
-        # Check for password-protected PDFs
-        if doc.is_encrypted:
-            doc.close()
-            raise PDFParsingError(
-                f"PDF '{path.name}' is password-protected. "
-                "Please provide an unencrypted version.",
-                context={"source_file": path.name},
-            )
-
-        logger.info(
-            "pdf_parsing_started",
-            source_file=path.name,
-            total_pages=doc.page_count,
-        )
-
-        pages: List[ExtractedPage] = []
-        empty_text_pages = 0
-
-        for page_num in range(doc.page_count):
-            page = doc.load_page(page_num)
-            extracted_page = self._extract_page(page, page_num + 1)  # 1-indexed
-            pages.append(extracted_page)
-
-            if not extracted_page.text.strip():
-                empty_text_pages += 1
-
-        doc.close()
-
-        # Detect scanned PDFs (majority of pages have no text)
-        total_pages = len(pages)
-        if total_pages > 0 and (empty_text_pages / total_pages) > 0.5:
-            logger.warning(
-                "scanned_pdf_detected",
-                source_file=path.name,
-                empty_pages=empty_text_pages,
-                total_pages=total_pages,
-            )
-
-        total_images = sum(len(p.images) for p in pages)
-        logger.info(
-            "pdf_parsing_completed",
-            source_file=path.name,
-            total_pages=len(pages),
-            total_images=total_images,
-            empty_text_pages=empty_text_pages,
-        )
-
-        return ParsedDocument(
-            source_file=path.name,
-            total_pages=len(pages),
-            pages=pages,
-            metadata={
-                "format": doc.metadata.get("format", "") if hasattr(doc, "metadata") else "",
-                "title": "",
-                "author": "",
-            },
-        )
+        return self._parse_document(doc, path.name)
 
     def parse_from_bytes(self, pdf_bytes: bytes, filename: str) -> ParsedDocument:
         """
@@ -170,39 +114,81 @@ class PDFParser:
         except Exception as e:
             raise PDFParsingError(f"Failed to open PDF '{filename}' from bytes: {e}")
 
+        return self._parse_document(doc, filename)
+
+    def _parse_document(self, doc: fitz.Document, source_name: str) -> ParsedDocument:
+        """
+        Core parsing logic shared between parse() and parse_from_bytes().
+
+        Args:
+            doc: An opened fitz.Document.
+            source_name: Display name for the source file.
+
+        Returns:
+            ParsedDocument with text and images per page.
+
+        Raises:
+            PDFParsingError: If the PDF is password-protected.
+        """
+        # Check for password-protected PDFs
         if doc.is_encrypted:
             doc.close()
             raise PDFParsingError(
-                f"PDF '{filename}' is password-protected.",
-                context={"source_file": filename},
+                f"PDF '{source_name}' is password-protected. "
+                "Please provide an unencrypted version.",
+                context={"source_file": source_name},
             )
 
         logger.info(
             "pdf_parsing_started",
-            source_file=filename,
+            source_file=source_name,
             total_pages=doc.page_count,
         )
 
         pages: List[ExtractedPage] = []
+        empty_text_pages = 0
+
         for page_num in range(doc.page_count):
             page = doc.load_page(page_num)
-            extracted_page = self._extract_page(page, page_num + 1)
+            extracted_page = self._extract_page(page, page_num + 1)  # 1-indexed
             pages.append(extracted_page)
 
+            if not extracted_page.text.strip():
+                empty_text_pages += 1
+
+        # Capture metadata before closing
+        metadata = {
+            "format": doc.metadata.get("format", "") if hasattr(doc, "metadata") else "",
+            "title": doc.metadata.get("title", "") if hasattr(doc, "metadata") else "",
+            "author": doc.metadata.get("author", "") if hasattr(doc, "metadata") else "",
+        }
+
         doc.close()
+
+        # Detect scanned PDFs (majority of pages have no text)
+        total_pages = len(pages)
+        if total_pages > 0 and (empty_text_pages / total_pages) > 0.5:
+            logger.warning(
+                "scanned_pdf_detected",
+                source_file=source_name,
+                empty_pages=empty_text_pages,
+                total_pages=total_pages,
+            )
 
         total_images = sum(len(p.images) for p in pages)
         logger.info(
             "pdf_parsing_completed",
-            source_file=filename,
-            total_pages=len(pages),
+            source_file=source_name,
+            total_pages=total_pages,
             total_images=total_images,
+            empty_text_pages=empty_text_pages,
         )
 
         return ParsedDocument(
-            source_file=filename,
-            total_pages=len(pages),
+            source_file=source_name,
+            total_pages=total_pages,
             pages=pages,
+            metadata=metadata,
         )
 
     def _extract_page(self, page: fitz.Page, page_number: int) -> ExtractedPage:

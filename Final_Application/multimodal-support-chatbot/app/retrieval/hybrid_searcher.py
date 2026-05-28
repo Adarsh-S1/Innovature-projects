@@ -265,13 +265,11 @@ class HybridSearcher:
         try:
             collection.load()
 
-            # Build filter expression
-            expr_parts = []
-            if doc_id_filter:
-                expr_parts.append(f'doc_id == "{doc_id_filter}"')
-            if language_filter:
-                expr_parts.append(f'language == "{language_filter}"')
-            expr = " && ".join(expr_parts) if expr_parts else ""
+            # Build filter expression (sanitized to prevent injection)
+            from app.core.sanitize import build_milvus_filter
+            expr = build_milvus_filter(
+                doc_id=doc_id_filter, language=language_filter
+            )
 
             results = collection.query(
                 expr=expr if expr else "chunk_id != ''",
@@ -332,13 +330,11 @@ class HybridSearcher:
         try:
             collection.load()
 
-            # Build filter expression
-            expr_parts = []
-            if doc_id_filter:
-                expr_parts.append(f'doc_id == "{doc_id_filter}"')
-            if language_filter:
-                expr_parts.append(f'language == "{language_filter}"')
-            expr = " && ".join(expr_parts) if expr_parts else None
+            # Build filter expression (sanitized to prevent injection)
+            from app.core.sanitize import build_milvus_filter
+            expr = build_milvus_filter(
+                doc_id=doc_id_filter, language=language_filter
+            )
 
             search_params = {
                 "metric_type": "COSINE",
@@ -431,19 +427,9 @@ class HybridSearcher:
             meta = corpus.get(chunk_id, {})
 
             # Parse JSON-serialized fields
-            section_path = meta.get("section_path", "[]")
-            if isinstance(section_path, str):
-                try:
-                    section_path = json.loads(section_path)
-                except (json.JSONDecodeError, TypeError):
-                    section_path = []
-
-            linked_images = meta.get("linked_images", "[]")
-            if isinstance(linked_images, str):
-                try:
-                    linked_images = json.loads(linked_images)
-                except (json.JSONDecodeError, TypeError):
-                    linked_images = []
+            from app.core.shared import parse_json_field
+            section_path = parse_json_field(meta.get("section_path", "[]"))
+            linked_images = parse_json_field(meta.get("linked_images", "[]"))
 
             results.append(SearchResult(
                 chunk_id=chunk_id,

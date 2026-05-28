@@ -100,10 +100,9 @@ async def chat(
 
     # ── Execute LangGraph pipeline ───────────────────────────────────
     try:
-        from app.agents.graph import graph
+        from app.agents.graph import compiled_graph
 
-        compiled = graph.compile()
-        final_state = compiled.invoke(initial_state)
+        final_state = compiled_graph.invoke(initial_state)
 
     except Exception as e:
         logger.error("pipeline_execution_failed", error=str(e), exc_info=True)

@@ -118,10 +118,10 @@ async def visual_specialist(state: AgentState) -> dict:
 
 
 async def _embed_query_text(query: str) -> List[float] | None:
-    """Embed query text using local TextEmbedder for caption similarity."""
+    """Embed query text using shared TextEmbedder singleton for caption similarity."""
     try:
-        from app.ingestion.embedder import TextEmbedder
-        embedder = TextEmbedder()
+        from app.core.shared import get_text_embedder
+        embedder = get_text_embedder()
         return embedder.embed_text(query)
     except Exception as e:
         logger.warning("query_text_embedding_failed", error=str(e))

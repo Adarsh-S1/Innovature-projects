@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     API_PREFIX: str = "/api/v1"
-    CORS_ORIGINS: List[str] = Field(default=["http://localhost:3000", "http://localhost:8000"])
+    CORS_ORIGINS: List[str] = Field(default=["http://localhost:3000", "http://localhost:8000", "http://localhost:5173"])
     RATE_LIMIT_PER_MINUTE: int = 60
 
     # ── Authentication ───────────────────────────────────────────────────
@@ -40,15 +40,21 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_MINUTES: int = 60
 
-    # ── Text Models (Groq + Local Embeddings) ────────────────────────────
+    # ── LLM — Groq (Primary) ──────────────────────────────────────────────
     GROQ_API_KEY: str = Field(default="", description="Groq API key")
     GROQ_MODEL: str = "llama-3.1-8b-instant"
-    OPENAI_API_KEY: str = Field(default="", description="OpenAI API key (deprecated)")
+
+    # ── LLM — OpenAI (Legacy, used only by LLM reranker fallback) ────────
+    OPENAI_API_KEY: str = Field(default="", description="OpenAI API key (legacy — only used by LLM reranker)")
     OPENAI_MODEL: str = "gpt-4o"
-    OPENAI_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
-    OPENAI_EMBEDDING_DIMENSIONS: int = 384
     OPENAI_MAX_RETRIES: int = 3
     OPENAI_TIMEOUT: int = 60
+
+    # ── Local Embeddings (SentenceTransformers) ──────────────────────────
+    # NOTE: Despite the "OPENAI_" prefix (legacy naming), these configure
+    # the LOCAL SentenceTransformers model (all-MiniLM-L6-v2), NOT OpenAI.
+    OPENAI_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    OPENAI_EMBEDDING_DIMENSIONS: int = 384
 
     # ── Google Gemini (Fallback LLM) ─────────────────────────────────────
     GOOGLE_API_KEY: Optional[str] = Field(default=None, description="Google AI API key for Gemini fallback")

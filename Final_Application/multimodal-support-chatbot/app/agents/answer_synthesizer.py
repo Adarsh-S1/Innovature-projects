@@ -130,13 +130,9 @@ async def _llm_synthesize(
     settings = get_settings()
 
     try:
-        from groq import AsyncGroq
+        from app.core.shared import get_async_groq_client
 
-        client = AsyncGroq(
-            api_key=settings.GROQ_API_KEY,
-            max_retries=2,
-            timeout=30,
-        )
+        client = get_async_groq_client()
 
         # Include last few turns for continuity
         history_messages = []

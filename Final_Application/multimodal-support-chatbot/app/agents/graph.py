@@ -143,8 +143,11 @@ def build_graph() -> StateGraph:
     return workflow
 
 
-# Pre-build the graph (compiled at import time for re-use)
+# Pre-build and pre-compile the graph at import time for re-use.
+# The compiled graph is thread-safe and should be reused across requests
+# instead of calling graph.compile() on every request.
 graph = build_graph()
+compiled_graph = graph.compile()
 
 logger.info(
     "langgraph_initialized",

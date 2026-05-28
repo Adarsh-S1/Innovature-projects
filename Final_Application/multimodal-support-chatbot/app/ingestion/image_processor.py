@@ -60,14 +60,10 @@ class ImageProcessor:
         self._seen_hashes: set = set()
 
     def _ensure_groq_client(self):
-        """Lazy-load Groq client."""
+        """Lazy-load Groq client via shared singleton."""
         if self._openai_client is None:
-            from groq import Groq
-            self._openai_client = Groq(
-                api_key=self._settings.GROQ_API_KEY,
-                max_retries=1,
-                timeout=30,
-            )
+            from app.core.shared import get_sync_groq_client
+            self._openai_client = get_sync_groq_client()
 
     def _ensure_blip_model(self):
         """Lazy-load BLIP model for local image captioning."""
@@ -280,9 +276,8 @@ class ImageProcessor:
             content = response.choices[0].message.content.strip()
 
             # Strip markdown code fences if present
-            if content.startswith("```"):
-                content = content.split("\n", 1)[-1]
-                content = content.rsplit("```", 1)[0]
+            from app.core.shared import strip_markdown_fences
+            content = strip_markdown_fences(content)
 
             result = json.loads(content)
             logger.debug("caption_generated", caption=result.get("caption", "")[:50])

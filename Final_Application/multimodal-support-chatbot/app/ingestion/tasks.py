@@ -259,13 +259,12 @@ class IngestionPipeline:
                 if raw_bytes:
                     image_key = f"images/{doc_id}/{img_record.image_id}.{ext}"
                     img_record.storage_url = image_key
-                    # Note: actual MinIO upload would happen here
-                    # minio_manager.upload_file(raw_bytes, image_key, f"image/{ext}")
+                    self._upload_to_minio(raw_bytes, image_key, f"image/{ext}")
 
                 if thumb_bytes:
                     thumb_key = f"thumbs/{doc_id}/{img_record.image_id}_thumb.png"
                     img_record.thumbnail_url = thumb_key
-                    # minio_manager.upload_file(thumb_bytes, thumb_key, "image/png")
+                    self._upload_to_minio(thumb_bytes, thumb_key, "image/png")
 
                 # Remove raw bytes from metadata before Milvus storage
                 img_record.metadata.pop("raw_image_bytes", None)
@@ -369,6 +368,30 @@ class IngestionPipeline:
             collection.insert(data)
             collection.flush()
             logger.info("milvus_images_inserted", count=len(data))
+
+    def _upload_to_minio(
+        self,
+        file_data: bytes,
+        object_key: str,
+        content_type: str = "application/octet-stream",
+    ) -> None:
+        """Upload a file to MinIO, bridging async for Celery compatibility."""
+        import asyncio
+        from app.db.minio_client import minio_manager
+
+        try:
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(
+                minio_manager.upload_file(file_data, object_key, content_type)
+            )
+            loop.close()
+        except Exception as e:
+            logger.warning(
+                "minio_upload_failed",
+                object_key=object_key,
+                error=str(e),
+            )
+            raise
 
     def _store_document_metadata(
         self,

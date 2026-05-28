@@ -259,13 +259,9 @@ async def _llm_quality_check(
     settings = get_settings()
 
     try:
-        from groq import AsyncGroq
+        from app.core.shared import get_async_groq_client, strip_markdown_fences
 
-        client = AsyncGroq(
-            api_key=settings.GROQ_API_KEY,
-            max_retries=1,
-            timeout=10,
-        )
+        client = get_async_groq_client()
 
         context = "\n".join(
             c.get("text", "")[:300] for c in chunks[:5]
@@ -290,8 +286,7 @@ async def _llm_quality_check(
         )
 
         content = response.choices[0].message.content.strip()
-        if content.startswith("```"):
-            content = content.split("\n", 1)[-1].rsplit("```", 1)[0]
+        content = strip_markdown_fences(content)
 
         return json.loads(content)
 

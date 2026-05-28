@@ -38,6 +38,13 @@ async def delete_document(
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """Remove a document and its associated data from Milvus and Redis."""
+    from app.core.sanitize import sanitize_milvus_value
+
+    try:
+        doc_id = sanitize_milvus_value(doc_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     logger.info("document_delete_request", doc_id=doc_id)
     
     errors = []

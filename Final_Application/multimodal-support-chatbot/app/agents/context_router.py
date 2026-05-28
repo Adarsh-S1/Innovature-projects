@@ -113,13 +113,9 @@ async def _llm_classify(
     settings = get_settings()
 
     try:
-        from groq import AsyncGroq
+        from app.core.shared import get_async_groq_client, strip_markdown_fences
 
-        client = AsyncGroq(
-            api_key=settings.GROQ_API_KEY,
-            max_retries=2,
-            timeout=15,
-        )
+        client = get_async_groq_client()
 
         # Build conversation context
         history_text = ""
@@ -146,10 +142,7 @@ async def _llm_classify(
         )
 
         content = response.choices[0].message.content.strip()
-
-        # Strip markdown fences
-        if content.startswith("```"):
-            content = content.split("\n", 1)[-1].rsplit("```", 1)[0]
+        content = strip_markdown_fences(content)
 
         parsed = json.loads(content)
 
@@ -249,12 +242,16 @@ def _rule_based_classify(
 
 
 def _get_dynamic_weights(query_type: str) -> tuple:
-    """Return (bm25_weight, vector_weight) based on query type."""
-    weights = {
-        "troubleshoot": (0.65, 0.35),
-        "how_to": (0.25, 0.75),
-        "locate_component": (0.30, 0.70),
-        "specification": (0.50, 0.50),
-        "general": (0.20, 0.80),
-    }
-    return weights.get(query_type, (0.40, 0.60))
+    """Return (bm25_weight, vector_weight) based on query type.
+
+    Delegates to the canonical _WEIGHT_TABLE in hybrid_searcher
+    to avoid maintaining duplicate weight tables.
+    """
+    from app.retrieval.hybrid_searcher import _WEIGHT_TABLE
+    from app.models.domain import QueryType
+
+    try:
+        qt = QueryType(query_type)
+        return _WEIGHT_TABLE.get(qt, (0.40, 0.60))
+    except ValueError:
+        return (0.40, 0.60)
