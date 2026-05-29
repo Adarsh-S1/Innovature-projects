@@ -60,8 +60,9 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[str] = Field(default=None, description="Google AI API key for Gemini fallback")
     GEMINI_MODEL: str = "gemini-1.5-pro"
 
-    # ── CLIP ─────────────────────────────────────────────────────────────
-    CLIP_MODEL_NAME: str = "ViT-L/14"
+    # ── CLIP / SigLIP (open_clip) ────────────────────────────────────────
+    CLIP_MODEL_NAME: str = "ViT-B-16-SigLIP-256"
+    CLIP_PRETRAINED: str = "webli"
     CLIP_DEVICE: str = "cuda"
     CLIP_EMBEDDING_DIMENSIONS: int = 768
 

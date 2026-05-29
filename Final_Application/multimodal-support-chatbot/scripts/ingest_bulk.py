@@ -42,6 +42,12 @@ async def ingest_directory(directory_path: str):
             # Generate a document ID
             doc_id = pdf_file.stem.replace(" ", "_").lower()
             
+            # Remove any existing data for this document to prevent duplicates
+            print(f"🧹 Removing old data for '{doc_id}' (if any)...")
+            await milvus_manager.delete_document(doc_id)
+            await minio_manager.delete_directory(f"images/{doc_id}/")
+            await minio_manager.delete_directory(f"thumbs/{doc_id}/")
+            
             # Read PDF as bytes
             with open(pdf_file, "rb") as f:
                 pdf_bytes = f.read()

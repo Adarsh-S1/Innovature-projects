@@ -36,8 +36,8 @@ dependencies = [
     "pillow>=10.4",
     "opencv-python-headless>=4.10",
 
-    # ── CLIP (installed separately via pip install git+...) ──────────
-    # clip @ git+https://github.com/openai/CLIP.git
+    # ── SigLIP via open_clip ─────────────────────────────────────────
+    "open-clip-torch>=2.24",
     "torch>=2.0",
     "torchvision>=0.15",
     "ftfy",

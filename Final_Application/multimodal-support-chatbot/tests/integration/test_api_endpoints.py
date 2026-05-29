@@ -93,7 +93,7 @@ class TestChatEndpoint:
 
     def test_chat_accepts_valid_query(self, client):
         """Valid query should be accepted (pipeline mocked)."""
-        with patch("app.api.v1.chat.compiled_graph") as mock_graph:
+        with patch("app.agents.graph.compiled_graph") as mock_graph:
             mock_graph.invoke.return_value = {
                 "final_answer": "Test answer",
                 "cited_sources": ["source.pdf, Pages 1-2"],

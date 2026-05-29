@@ -1,9 +1,8 @@
 """
-Image Processor — handles filtering, classification, caption generation (GPT-4o Vision),
-CLIP embedding, thumbnail generation, and perceptual hash deduplication.
+Image Processor — handles filtering, classification, caption generation (local BLIP + Groq),
+SigLIP embedding, thumbnail generation, and perceptual hash deduplication.
 """
 
-import base64
 import hashlib
 import io
 import json
@@ -22,7 +21,7 @@ from app.models.domain import ImageRecord, ImageType
 
 logger = get_logger(__name__)
 
-# Caption generation system prompt for GPT-4o Vision
+# Caption generation system prompt — used by Groq text model to format BLIP's raw caption
 _CAPTION_SYSTEM_PROMPT = """You are a technical documentation assistant. Given a diagram or image \
 from a technical manual, provide:
 1. A concise caption (max 20 words)
@@ -45,8 +44,8 @@ class ImageProcessor:
     """
     Processes images extracted from PDFs:
     - Filters by size and aspect ratio
-    - Generates captions via GPT-4o Vision
-    - Generates CLIP embeddings
+    - Generates captions via local BLIP + Groq text model
+    - Generates SigLIP embeddings
     - Creates thumbnails
     - Deduplicates via perceptual hashing
     """
@@ -55,6 +54,7 @@ class ImageProcessor:
         self._settings = get_settings()
         self._clip_model = None
         self._clip_preprocess = None
+        self._clip_tokenizer = None
         self._clip_device = None
         self._openai_client = None
         self._seen_hashes: set = set()
@@ -81,11 +81,11 @@ class ImageProcessor:
                 self._blip_model = "dummy"
 
     def _ensure_clip_model(self):
-        """Lazy-load CLIP model and preprocessing."""
+        """Lazy-load SigLIP model and preprocessing via open_clip."""
         if self._clip_model is None:
             try:
                 import torch
-                import clip as clip_module
+                import open_clip
 
                 device = self._settings.CLIP_DEVICE
                 if device == "cuda" and not torch.cuda.is_available():
@@ -93,16 +93,19 @@ class ImageProcessor:
                     logger.warning("clip_cuda_unavailable_falling_back_to_cpu")
 
                 self._clip_device = device
-                self._clip_model, self._clip_preprocess = clip_module.load(
-                    self._settings.CLIP_MODEL_NAME, device=device
+                self._clip_model, _, self._clip_preprocess = open_clip.create_model_and_transforms(
+                    self._settings.CLIP_MODEL_NAME,
+                    pretrained=self._settings.CLIP_PRETRAINED,
+                    device=device,
                 )
+                self._clip_tokenizer = open_clip.get_tokenizer(self._settings.CLIP_MODEL_NAME)
                 logger.info(
                     "clip_model_loaded",
                     model=self._settings.CLIP_MODEL_NAME,
                     device=device,
                 )
             except ImportError:
-                logger.warning("clip_not_installed_using_dummy_embeddings")
+                logger.warning("open_clip_not_installed_using_dummy_embeddings")
                 self._clip_model = "dummy"
             except Exception as e:
                 logger.error("clip_model_load_failed", error=str(e))
@@ -179,7 +182,7 @@ class ImageProcessor:
             return None
         self._seen_hashes.add(img_hash)
 
-        # Step 2: Generate caption via GPT-4o Vision
+        # Step 2: Generate caption via local BLIP + Groq text model
         caption_data = self._generate_caption(img.image_bytes, img.extension)
 
         # Step 3: Generate CLIP embedding
@@ -240,8 +243,10 @@ class ImageProcessor:
         self, image_bytes: bytes, extension: str = "png"
     ) -> Dict[str, Any]:
         """
-        Generate caption, description, tags using GPT-4o Vision.
-        Falls back to empty metadata if the API is unavailable.
+        Generate caption, description, tags using local BLIP + Groq text model.
+        BLIP generates a raw caption locally, then Groq's text model formats
+        it into the required structured JSON.
+        Falls back to empty metadata if either model is unavailable.
         """
         self._ensure_groq_client()
         self._ensure_blip_model()
@@ -301,7 +306,7 @@ class ImageProcessor:
         }
 
     def _generate_clip_embedding(self, image_bytes: bytes) -> List[float]:
-        """Generate CLIP embedding for an image."""
+        """Generate SigLIP embedding for an image."""
         self._ensure_clip_model()
 
         if self._clip_model == "dummy":
@@ -341,7 +346,7 @@ class ImageProcessor:
             return b""
 
     def _classify_image_type(self, raw_type: str) -> ImageType:
-        """Map GPT-4o's classification string to the ImageType enum."""
+        """Map BLIP/Groq classification string to the ImageType enum."""
         mapping = {
             "schematic": ImageType.SCHEMATIC,
             "wiring_diagram": ImageType.WIRING_DIAGRAM,
@@ -358,7 +363,7 @@ class ImageProcessor:
 
     def generate_clip_text_embedding(self, text: str) -> List[float]:
         """
-        Generate CLIP text embedding for cross-modal search.
+        Generate SigLIP text embedding for cross-modal search.
         Used to encode queries in the image search space.
         """
         self._ensure_clip_model()
@@ -368,9 +373,8 @@ class ImageProcessor:
 
         try:
             import torch
-            import clip as clip_module
 
-            tokens = clip_module.tokenize([text]).to(self._clip_device)
+            tokens = self._clip_tokenizer([text]).to(self._clip_device)
             with torch.no_grad():
                 features = self._clip_model.encode_text(tokens)
                 features = features / features.norm(dim=-1, keepdim=True)
@@ -380,3 +384,5 @@ class ImageProcessor:
         except Exception as e:
             logger.warning("clip_text_embedding_failed", error=str(e))
             return [0.0] * self._settings.CLIP_EMBEDDING_DIMENSIONS
+
+

@@ -178,6 +178,24 @@ class MilvusManager:
             self._image_collection = Collection(name=image_name)
             logger.info("milvus_collection_exists", collection=image_name)
 
+    async def delete_document(self, doc_id: str) -> None:
+        """Delete all text chunks and image records associated with a doc_id."""
+        if self._text_collection:
+            try:
+                expr = f'doc_id == "{doc_id}"'
+                self._text_collection.delete(expr)
+                logger.info("deleted_old_text_chunks", doc_id=doc_id)
+            except Exception as e:
+                logger.warning("failed_to_delete_text_chunks", doc_id=doc_id, error=str(e))
+                
+        if self._image_collection:
+            try:
+                expr = f'doc_id == "{doc_id}"'
+                self._image_collection.delete(expr)
+                logger.info("deleted_old_image_records", doc_id=doc_id)
+            except Exception as e:
+                logger.warning("failed_to_delete_image_records", doc_id=doc_id, error=str(e))
+
     async def health_check(self) -> bool:
         """Check if Milvus is reachable."""
         try:

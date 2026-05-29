@@ -133,6 +133,25 @@ class MinIOManager:
         except Exception as e:
             raise MinIOError(f"Failed to delete {object_key}: {e}")
 
+    async def delete_directory(
+        self,
+        prefix: str,
+        bucket: Optional[str] = None,
+    ) -> None:
+        """Delete all files under a specific prefix (folder)."""
+        bucket = bucket or self._settings.MINIO_BUCKET_NAME
+        try:
+            paginator = self.client.get_paginator('list_objects_v2')
+            pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+            
+            for page in pages:
+                if 'Contents' in page:
+                    for obj in page['Contents']:
+                        self.client.delete_object(Bucket=bucket, Key=obj['Key'])
+            logger.debug("minio_directory_deleted", prefix=prefix)
+        except Exception as e:
+            logger.warning("minio_directory_delete_failed", prefix=prefix, error=str(e))
+
     async def health_check(self) -> bool:
         """Check if MinIO is reachable."""
         try:
