@@ -298,23 +298,29 @@ async def _llm_quality_check(
 def _build_response_images(
     images: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Build final response image payload with presigned URLs."""
+    """Filter retrieved images and build response payload.
+
+    Note: Presigned URL generation is handled at the API layer (chat.py)
+    to keep AI agents free of infrastructure concerns.
+    """
     response = []
 
     for img in images:
         score = img.get("composite_score", 0)
-        # Drop images below 0.55 relevance threshold (from spec)
-        if score < 0.55:
+        # image_searcher already filters by settings.CLIP_SIMILARITY_THRESHOLD
+        # so we don't need a strict hardcoded filter here, but we'll keep a sanity check
+        if score < 0.20:
             continue
 
         response.append({
             "image_id": img.get("image_id", ""),
-            "url": img.get("storage_url", ""),
+            "storage_url": img.get("storage_url", ""),
             "thumbnail_url": img.get("thumbnail_url", ""),
             "caption": img.get("caption", ""),
             "relevance_score": round(score, 3),
             "image_type": img.get("image_type", "other"),
-            "source": f"{img.get('source_file', 'Unknown')}, Page {img.get('page_number', '?')}",
+            "page_number": img.get("page_number", "?"),
+            "source_file": img.get("source_file", "Unknown"),
         })
 
     return response

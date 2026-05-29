@@ -126,7 +126,7 @@ async def chat(
     confidence_level = response_metadata.get("confidence_level", "medium")
 
     # ── Build image results ──────────────────────────────────────────
-    images = _build_image_results(final_state.get("response_images", []))
+    images = await _build_image_results(final_state.get("response_images", []))
 
     # ── Build source references ──────────────────────────────────────
     sources = _build_source_references(final_state.get("retrieved_chunks", []))
@@ -219,21 +219,39 @@ async def delete_session(
 # ── Helper functions ─────────────────────────────────────────────────────
 
 
-def _build_image_results(
+async def _build_image_results(
     response_images: List[Dict[str, Any]],
 ) -> List[ImageResult]:
-    """Convert raw image dicts to ImageResult response models."""
+    """Convert raw image dicts to ImageResult response models.
+
+    Generates presigned MinIO URLs so the frontend can securely
+    display images without direct access to the storage backend.
+    """
+    from app.db.minio_client import minio_manager
+
     results = []
     for img in response_images:
         try:
+            # Generate presigned URLs for secure frontend access
+            storage_url = img.get("storage_url", "")
+            thumbnail_url = img.get("thumbnail_url", "")
+
+            try:
+                presigned_url = await minio_manager.get_presigned_url(storage_url) if storage_url else ""
+                presigned_thumb = await minio_manager.get_presigned_url(thumbnail_url) if thumbnail_url else ""
+            except Exception:
+                logger.warning("presigned_url_failed", storage_url=storage_url)
+                presigned_url = storage_url
+                presigned_thumb = thumbnail_url
+
             results.append(ImageResult(
                 image_id=img.get("image_id", ""),
-                url=img.get("url", ""),
-                thumbnail_url=img.get("thumbnail_url"),
+                url=presigned_url,
+                thumbnail_url=presigned_thumb,
                 caption=img.get("caption", ""),
                 relevance_score=img.get("relevance_score", 0.0),
                 image_type=img.get("image_type", "other"),
-                source=img.get("source", ""),
+                source=f"{img.get('source_file', 'Unknown')}, Page {img.get('page_number', '?')}",
             ))
         except Exception:
             continue
