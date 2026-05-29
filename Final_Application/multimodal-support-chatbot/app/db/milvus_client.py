@@ -151,6 +151,9 @@ class MilvusManager:
             self._text_collection = Collection(name=text_name)
             logger.info("milvus_collection_exists", collection=text_name)
 
+        # Load collection into memory to enable search and delete operations
+        self._text_collection.load()
+
         # Image collection
         if not utility.has_collection(image_name):
             schema = self._build_image_collection_schema()
@@ -177,6 +180,9 @@ class MilvusManager:
         else:
             self._image_collection = Collection(name=image_name)
             logger.info("milvus_collection_exists", collection=image_name)
+
+        # Load collection into memory to enable search and delete operations
+        self._image_collection.load()
 
     async def delete_document(self, doc_id: str) -> None:
         """Delete all text chunks and image records associated with a doc_id."""
