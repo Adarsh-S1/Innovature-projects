@@ -298,6 +298,7 @@ class IngestionPipeline:
 
         return errors
 
+
     def _insert_chunks_to_milvus(self, chunks: list) -> None:
         """Prepare and insert text chunks into Milvus text_collection."""
         from app.db.milvus_client import milvus_manager
@@ -324,7 +325,7 @@ class IngestionPipeline:
                 "product_id": chunk.metadata.get("product_id", ""),
                 "language": chunk.metadata.get("language", "en"),
                 "text_vector": chunk.text_vector,
-                "linked_images": json.dumps(chunk.linked_images),
+                "linked_images": chunk.linked_images[:256],  # Native ARRAY field
             })
 
         if data:
@@ -357,7 +358,7 @@ class IngestionPipeline:
                 "image_type": img.image_type.value,
                 "storage_url": img.storage_url[:512],
                 "thumbnail_url": img.thumbnail_url[:512],
-                "linked_chunk_ids": json.dumps(img.linked_chunk_ids)[:2048],
+                "linked_chunk_ids": img.linked_chunk_ids[:256],  # Native ARRAY field
                 "source_file": img.metadata.get("source_file", ""),
                 "product_id": img.metadata.get("product_id", ""),
                 "clip_vector": img.clip_vector,
@@ -375,16 +376,27 @@ class IngestionPipeline:
         object_key: str,
         content_type: str = "application/octet-stream",
     ) -> None:
-        """Upload a file to MinIO, bridging async for Celery compatibility."""
-        import asyncio
+        """Upload a file to MinIO synchronously.
+
+        MinIOManager.upload_file() is declared async but uses synchronous
+        boto3 internally. To avoid event loop conflicts in Celery or scripts
+        that already have a running loop, we call the boto3 client directly.
+        """
+        import io
         from app.db.minio_client import minio_manager
 
         try:
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(
-                minio_manager.upload_file(file_data, object_key, content_type)
+            client = minio_manager.client  # raises if not connected
+            bucket = minio_manager._settings.MINIO_BUCKET_NAME
+
+            client.put_object(
+                Bucket=bucket,
+                Key=object_key,
+                Body=io.BytesIO(file_data),
+                ContentLength=len(file_data),
+                ContentType=content_type,
             )
-            loop.close()
+            logger.debug("minio_file_uploaded", key=object_key, bucket=bucket)
         except Exception as e:
             logger.warning(
                 "minio_upload_failed",
@@ -421,12 +433,22 @@ class IngestionPipeline:
         }
 
         try:
-            # Use sync approach for Celery compatibility
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(
-                redis_manager.save_document(doc_id, metadata)
+            # Use synchronous redis directly to avoid event loop conflicts
+            # (aioredis requires await, which can't be bridged when a loop
+            # is already running in the ingestion script)
+            import redis as sync_redis
+            settings = get_settings()
+            r = sync_redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                db=settings.REDIS_DB,
+                password=settings.REDIS_PASSWORD or None,
+                decode_responses=True,
             )
-            loop.close()
+            key = f"doc:{doc_id}"
+            r.set(key, json.dumps(metadata, default=str))
+            r.close()
+            logger.debug("document_metadata_saved", doc_id=doc_id)
         except Exception as e:
             logger.warning("document_metadata_storage_failed", error=str(e))
 

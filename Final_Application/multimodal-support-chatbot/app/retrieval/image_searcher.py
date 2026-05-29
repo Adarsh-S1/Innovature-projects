@@ -164,10 +164,11 @@ class ImageSearcher:
                 + 0.10 * type_bonus
             )
 
-            # Parse JSON fields
+            # keyword_tags is still VARCHAR (JSON-serialized), parse it
             from app.core.shared import parse_json_field
             keyword_tags = parse_json_field(meta.get("keyword_tags", "[]"))
-            linked_chunk_ids = parse_json_field(meta.get("linked_chunk_ids", "[]"))
+            # linked_chunk_ids is now a native ARRAY field — no parsing needed
+            linked_chunk_ids = meta.get("linked_chunk_ids", [])
 
             scored_results.append(ImageSearchResult(
                 image_id=iid,

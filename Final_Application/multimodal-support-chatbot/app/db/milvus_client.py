@@ -83,7 +83,13 @@ class MilvusManager:
                 dtype=DataType.FLOAT_VECTOR,
                 dim=self._settings.OPENAI_EMBEDDING_DIMENSIONS,
             ),
-            FieldSchema(name="linked_images", dtype=DataType.VARCHAR, max_length=2048),
+            FieldSchema(
+                name="linked_images",
+                dtype=DataType.ARRAY,
+                element_type=DataType.VARCHAR,
+                max_capacity=256,
+                max_length=64,
+            ),
         ]
         return CollectionSchema(fields=fields, description="Text chunks from PDF manuals")
 
@@ -100,7 +106,13 @@ class MilvusManager:
             FieldSchema(name="image_type", dtype=DataType.VARCHAR, max_length=32),
             FieldSchema(name="storage_url", dtype=DataType.VARCHAR, max_length=512),
             FieldSchema(name="thumbnail_url", dtype=DataType.VARCHAR, max_length=512),
-            FieldSchema(name="linked_chunk_ids", dtype=DataType.VARCHAR, max_length=2048),
+            FieldSchema(
+                name="linked_chunk_ids",
+                dtype=DataType.ARRAY,
+                element_type=DataType.VARCHAR,
+                max_capacity=256,
+                max_length=64,
+            ),
             FieldSchema(name="source_file", dtype=DataType.VARCHAR, max_length=256),
             FieldSchema(name="product_id", dtype=DataType.VARCHAR, max_length=64),
             FieldSchema(

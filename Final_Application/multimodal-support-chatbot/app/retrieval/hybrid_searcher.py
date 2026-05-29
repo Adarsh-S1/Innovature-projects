@@ -426,10 +426,11 @@ class HybridSearcher:
         for chunk_id, rrf_score, bm25_rank, vector_rank, v_dist in fused[:top_k]:
             meta = corpus.get(chunk_id, {})
 
-            # Parse JSON-serialized fields
+            # section_path is still VARCHAR (JSON-serialized), parse it
             from app.core.shared import parse_json_field
             section_path = parse_json_field(meta.get("section_path", "[]"))
-            linked_images = parse_json_field(meta.get("linked_images", "[]"))
+            # linked_images is now a native ARRAY field — no parsing needed
+            linked_images = meta.get("linked_images", [])
 
             results.append(SearchResult(
                 chunk_id=chunk_id,
