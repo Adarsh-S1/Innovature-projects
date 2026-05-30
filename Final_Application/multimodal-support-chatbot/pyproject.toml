@@ -28,9 +28,9 @@ dependencies = [
     # ── Vector Database ──────────────────────────────────────────────
     "pymilvus>=2.4",
 
-    # ── PDF Processing ───────────────────────────────────────────────
-    "pymupdf>=1.24",
-    "pdfplumber>=0.11",
+    # ── PDF Processing (Docling) ───────────────────────────────────────
+    "docling>=2.0",
+    "docling-core>=2.0",
 
     # ── Image Processing ─────────────────────────────────────────────
     "pillow>=10.4",

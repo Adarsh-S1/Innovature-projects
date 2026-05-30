@@ -50,11 +50,9 @@ class Settings(BaseSettings):
     OPENAI_MAX_RETRIES: int = 3
     OPENAI_TIMEOUT: int = 60
 
-    # ── Local Embeddings (SentenceTransformers) ──────────────────────────
-    # NOTE: Despite the "OPENAI_" prefix (legacy naming), these configure
-    # the LOCAL SentenceTransformers model (all-MiniLM-L6-v2), NOT OpenAI.
-    OPENAI_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
-    OPENAI_EMBEDDING_DIMENSIONS: int = 384
+    # ── Local Text Embeddings (SentenceTransformers) ──────────────────────
+    TEXT_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    TEXT_EMBEDDING_DIMENSIONS: int = 384
 
     # ── Google Gemini (Fallback LLM) ─────────────────────────────────────
     GOOGLE_API_KEY: Optional[str] = Field(default=None, description="Google AI API key for Gemini fallback")

@@ -81,7 +81,7 @@ class MilvusManager:
             FieldSchema(
                 name="text_vector",
                 dtype=DataType.FLOAT_VECTOR,
-                dim=self._settings.OPENAI_EMBEDDING_DIMENSIONS,
+                dim=self._settings.TEXT_EMBEDDING_DIMENSIONS,
             ),
             FieldSchema(
                 name="linked_images",
@@ -123,7 +123,7 @@ class MilvusManager:
             FieldSchema(
                 name="caption_vector",
                 dtype=DataType.FLOAT_VECTOR,
-                dim=self._settings.OPENAI_EMBEDDING_DIMENSIONS,
+                dim=self._settings.TEXT_EMBEDDING_DIMENSIONS,
             ),
         ]
         return CollectionSchema(fields=fields, description="Images extracted from PDF manuals")
