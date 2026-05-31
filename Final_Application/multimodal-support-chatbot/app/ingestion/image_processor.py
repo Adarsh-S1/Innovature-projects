@@ -147,6 +147,12 @@ class ImageProcessor:
                 if record is not None:
                     records.append(record)
             except Exception as e:
+                from app.core.exceptions import LLMRateLimitError
+                # Check if it's a rate limit error or a tenacity RetryError containing a rate limit error
+                if isinstance(e, LLMRateLimitError) or "RateLimit" in str(type(e)) or "rate limit" in str(e).lower():
+                    logger.error("api_rate_limit_fatal", error=str(e))
+                    raise LLMRateLimitError("Groq API rate limit reached.") from e
+                    
                 logger.warning(
                     "image_processing_failed",
                     page=img.page_number,
@@ -182,8 +188,11 @@ class ImageProcessor:
             return None
         self._seen_hashes.add(img_hash)
 
-        # Step 2: Generate caption via local BLIP + Groq text model
-        caption_data = self._generate_caption(img.image_bytes, img.extension)
+        # Step 2: Generate caption — prefer PDF-native caption from Docling
+        pdf_caption = getattr(img, "caption", "") or ""
+        caption_data = self._generate_caption(
+            img.image_bytes, img.extension, pdf_caption=pdf_caption
+        )
 
         # Step 3: Generate CLIP embedding
         clip_vector = self._generate_clip_embedding(img.image_bytes)
@@ -218,6 +227,7 @@ class ImageProcessor:
                 "raw_image_bytes": img.image_bytes,
                 "thumbnail_bytes": thumbnail_bytes,
                 "extension": img.extension,
+                "caption_source": "pdf" if pdf_caption else "blip+groq",
             },
         )
 
@@ -240,30 +250,44 @@ class ImageProcessor:
         wait=wait_exponential(multiplier=1, min=2, max=10),
     )
     def _generate_caption(
-        self, image_bytes: bytes, extension: str = "png"
+        self, image_bytes: bytes, extension: str = "png", pdf_caption: str = ""
     ) -> Dict[str, Any]:
         """
-        Generate caption, description, tags using local BLIP + Groq text model.
-        BLIP generates a raw caption locally, then Groq's text model formats
-        it into the required structured JSON.
-        Falls back to empty metadata if either model is unavailable.
+        Generate caption, description, tags for an image.
+
+        Strategy (in order of preference):
+        1. If a caption was extracted from the PDF layout by Docling, use it
+           as the raw description and send to Groq for structured formatting.
+        2. Otherwise, generate a raw caption locally using BLIP, then send
+           to Groq for structured formatting.
+        3. If all else fails, return fallback metadata.
         """
         self._ensure_groq_client()
-        self._ensure_blip_model()
 
         try:
-            # 1. Get raw caption locally using BLIP
-            if getattr(self, "_blip_model", "dummy") == "dummy":
-                raw_caption = "A technical image from a manual"
+            # Determine raw caption source
+            if pdf_caption and len(pdf_caption.strip()) > 5:
+                # Use PDF-native caption directly (skip BLIP entirely)
+                raw_caption = pdf_caption.strip()
+                caption_source = "pdf_layout"
+                logger.debug("using_pdf_caption", caption=raw_caption[:60])
             else:
-                img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-                inputs = self._blip_processor(img, return_tensors="pt").to(self._blip_device)
-                out = self._blip_model.generate(**inputs, max_new_tokens=50)
-                raw_caption = self._blip_processor.decode(out[0], skip_special_tokens=True)
+                # Fall back to local BLIP model
+                self._ensure_blip_model()
+                if getattr(self, "_blip_model", "dummy") == "dummy":
+                    raw_caption = "A technical image from a manual"
+                else:
+                    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+                    inputs = self._blip_processor(img, return_tensors="pt").to(self._blip_device)
+                    out = self._blip_model.generate(**inputs, max_new_tokens=50)
+                    raw_caption = self._blip_processor.decode(out[0], skip_special_tokens=True)
+                caption_source = "blip_local"
 
-            # 2. Use Groq text model to format it into the required JSON structure
+            # Use Groq text model to format the raw caption into structured JSON
             prompt = (
-                f"I have an image from a technical manual. A local vision model described it as: '{raw_caption}'.\n\n"
+                f"I have an image from a technical manual. "
+                f"{'The PDF caption reads' if caption_source == 'pdf_layout' else 'A local vision model described it as'}: "
+                f"'{raw_caption}'.\n\n"
                 "Based on this description, please generate the required JSON structure."
             )
 
@@ -285,13 +309,23 @@ class ImageProcessor:
             content = strip_markdown_fences(content)
 
             result = json.loads(content)
-            logger.debug("caption_generated", caption=result.get("caption", "")[:50])
+            logger.debug(
+                "caption_generated",
+                caption=result.get("caption", "")[:50],
+                source=caption_source,
+            )
             return result
 
         except json.JSONDecodeError as e:
             logger.warning("caption_json_parse_failed", error=str(e))
             return self._fallback_caption()
         except Exception as e:
+            from app.core.exceptions import LLMRateLimitError
+            # Bubble up rate limit immediately, don't fallback
+            if "rate limit" in str(e).lower() or "429" in str(e) or "Too Many Requests" in str(e):
+                logger.warning("api_rate_limit_encountered", error=str(e))
+                raise LLMRateLimitError(str(e))
+                
             logger.warning("caption_generation_failed", error=str(e))
             return self._fallback_caption()
 

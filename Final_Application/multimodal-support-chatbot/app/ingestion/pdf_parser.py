@@ -1,21 +1,19 @@
 """
-PDF Parser — extracts text and images from PDF files using PyMuPDF (fitz).
+PDF Parser — extracts text and images from PDF files using Docling.
 
 Handles:
-- Raw text extraction per page with structural metadata
+- Rich text extraction per page with structural metadata
 - Embedded image extraction per page with bounding boxes
 - Heading/section structure detection (H1/H2/H3)
-- Password-protected PDF detection
-- Scanned PDF detection (empty text layer)
+- Figure caption extraction from the PDF's own layout
+- Scanned PDF detection (OCR-capable via Docling)
 """
 
 import io
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import fitz  # PyMuPDF
 from PIL import Image
 
 from app.core.config import get_settings
@@ -36,6 +34,7 @@ class ExtractedImage:
     height: int
     image_index: int  # index on the page
     extension: str = "png"
+    caption: str = ""  # Caption extracted from PDF layout (if available)
 
 
 @dataclass
@@ -57,22 +56,39 @@ class ParsedDocument:
     total_pages: int
     pages: List[ExtractedPage]
     metadata: Dict[str, str] = field(default_factory=dict)
+    docling_document: Optional[object] = None  # Raw DoclingDocument for chunker
 
 
 class PDFParser:
     """
-    Extracts text and images from PDF files using PyMuPDF.
+    Extracts text and images from PDF files using Docling.
 
-    Handles edge cases:
-    - Password-protected PDFs → raises PDFParsingError
-    - Scanned PDFs → flags pages with no text for potential OCR fallback
-    - Large PDFs → page-by-page streaming extraction
+    Docling provides AI-powered layout analysis, heading detection,
+    table extraction, OCR, and figure-caption association — all
+    running locally without external API calls.
     """
 
     def __init__(self):
         self._settings = get_settings()
         self._min_image_width = self._settings.MIN_IMAGE_WIDTH
         self._min_image_height = self._settings.MIN_IMAGE_HEIGHT
+        self._converter = None
+
+    def _ensure_converter(self):
+        """Lazy-load Docling DocumentConverter."""
+        if self._converter is None:
+            from docling.document_converter import DocumentConverter, PdfFormatOption
+            from docling.datamodel.pipeline_options import PdfPipelineOptions
+
+            pipeline_options = PdfPipelineOptions()
+            pipeline_options.generate_picture_images = True
+
+            self._converter = DocumentConverter(
+                format_options={
+                    "pdf": PdfFormatOption(pipeline_options=pipeline_options),
+                }
+            )
+            logger.info("docling_converter_initialized")
 
     def parse(self, pdf_path: str) -> ParsedDocument:
         """
@@ -85,18 +101,20 @@ class PDFParser:
             ParsedDocument with text and images per page.
 
         Raises:
-            PDFParsingError: If the PDF cannot be opened or is password-protected.
+            PDFParsingError: If the PDF cannot be opened.
         """
         path = Path(pdf_path)
         if not path.exists():
             raise PDFParsingError(f"PDF file not found: {pdf_path}")
 
-        try:
-            doc = fitz.open(pdf_path)
-        except Exception as e:
-            raise PDFParsingError(f"Failed to open PDF '{pdf_path}': {e}")
+        self._ensure_converter()
 
-        return self._parse_document(doc, path.name)
+        try:
+            result = self._converter.convert(str(path))
+        except Exception as e:
+            raise PDFParsingError(f"Failed to parse PDF '{pdf_path}': {e}")
+
+        return self._build_parsed_document(result, path.name)
 
     def parse_from_bytes(self, pdf_bytes: bytes, filename: str) -> ParsedDocument:
         """
@@ -109,61 +127,174 @@ class PDFParser:
         Returns:
             ParsedDocument with text and images per page.
         """
+        import tempfile
+        import os
+
+        self._ensure_converter()
+
+        # Docling requires a file path, so write bytes to a temp file
+        tmp_path = None
         try:
-            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(pdf_bytes)
+                tmp_path = tmp.name
+
+            result = self._converter.convert(tmp_path)
+            return self._build_parsed_document(result, filename)
+        except PDFParsingError:
+            raise
         except Exception as e:
-            raise PDFParsingError(f"Failed to open PDF '{filename}' from bytes: {e}")
+            raise PDFParsingError(f"Failed to parse PDF '{filename}' from bytes: {e}")
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
-        return self._parse_document(doc, filename)
-
-    def _parse_document(self, doc: fitz.Document, source_name: str) -> ParsedDocument:
+    def _build_parsed_document(self, result, source_name: str) -> ParsedDocument:
         """
-        Core parsing logic shared between parse() and parse_from_bytes().
+        Convert Docling's ConversionResult into our ParsedDocument format.
 
-        Args:
-            doc: An opened fitz.Document.
-            source_name: Display name for the source file.
-
-        Returns:
-            ParsedDocument with text and images per page.
-
-        Raises:
-            PDFParsingError: If the PDF is password-protected.
+        This extracts text, headings, tables, and images per page while
+        preserving the raw DoclingDocument for use by the chunker.
         """
-        # Check for password-protected PDFs
-        if doc.is_encrypted:
-            doc.close()
-            raise PDFParsingError(
-                f"PDF '{source_name}' is password-protected. "
-                "Please provide an unencrypted version.",
-                context={"source_file": source_name},
-            )
+        from docling_core.types.doc.document import PictureItem, TableItem
+
+        doc = result.document
 
         logger.info(
             "pdf_parsing_started",
             source_file=source_name,
-            total_pages=doc.page_count,
         )
 
+        # Build per-page data structures
+        page_data: Dict[int, Dict] = {}
+
+        # Extract text content per page from the document body
+        for element, _level in doc.iterate_items():
+            page_numbers = self._get_element_pages(element)
+            text_content = element.text if hasattr(element, "text") else ""
+
+            for page_num in page_numbers:
+                if page_num not in page_data:
+                    page_data[page_num] = {
+                        "text_parts": [],
+                        "headings": [],
+                        "images": [],
+                        "has_tables": False,
+                    }
+
+                if text_content:
+                    page_data[page_num]["text_parts"].append(text_content)
+
+                # Detect headings from Docling's structure
+                if hasattr(element, "label") and "heading" in str(getattr(element, "label", "")).lower():
+                    level = self._classify_heading_level(element)
+                    if text_content.strip():
+                        page_data[page_num]["headings"].append(
+                            {"level": level, "text": text_content.strip()}
+                        )
+
+                # Detect tables
+                if isinstance(element, TableItem):
+                    page_data[page_num]["has_tables"] = True
+
+        # Extract images with their captions
+        img_global_index = 0
+        for element, _level in doc.iterate_items():
+            if isinstance(element, PictureItem):
+                page_numbers = self._get_element_pages(element)
+                page_num = page_numbers[0] if page_numbers else 1
+
+                if page_num not in page_data:
+                    page_data[page_num] = {
+                        "text_parts": [],
+                        "headings": [],
+                        "images": [],
+                        "has_tables": False,
+                    }
+
+                # Get caption from PDF layout (Docling auto-groups captions)
+                caption = ""
+                try:
+                    caption = element.caption_text(doc=doc) or ""
+                except Exception:
+                    pass
+
+                # Get image bytes
+                image_bytes = self._extract_image_bytes(element)
+                if image_bytes is None:
+                    continue
+
+                # Get image dimensions
+                try:
+                    img = Image.open(io.BytesIO(image_bytes))
+                    width, height = img.size
+                except Exception:
+                    continue
+
+                # Filter: minimum resolution
+                if width < self._min_image_width or height < self._min_image_height:
+                    continue
+
+                # Filter: skip tiny decorative elements (icons, bullets)
+                area = width * height
+                if area < 15000:  # ~122x122 minimum useful area
+                    continue
+
+                # Filter: skip extreme aspect ratios (likely decorative bars)
+                aspect_ratio = max(width, height) / max(min(width, height), 1)
+                if aspect_ratio > 10:
+                    continue
+
+                # Get bounding box
+                bbox = self._get_element_bbox(element)
+
+                page_data[page_num]["images"].append(
+                    ExtractedImage(
+                        image_bytes=image_bytes,
+                        page_number=page_num,
+                        bbox=bbox,
+                        width=width,
+                        height=height,
+                        image_index=img_global_index,
+                        extension="png",
+                        caption=caption,
+                    )
+                )
+                img_global_index += 1
+
+        # Build ExtractedPage objects
+        if not page_data:
+            # No structured content found — create a single empty page
+            page_data[1] = {
+                "text_parts": [],
+                "headings": [],
+                "images": [],
+                "has_tables": False,
+            }
+
+        max_page = max(page_data.keys()) if page_data else 1
         pages: List[ExtractedPage] = []
         empty_text_pages = 0
 
-        for page_num in range(doc.page_count):
-            page = doc.load_page(page_num)
-            extracted_page = self._extract_page(page, page_num + 1)  # 1-indexed
-            pages.append(extracted_page)
+        for page_num in range(1, max_page + 1):
+            data = page_data.get(page_num, {
+                "text_parts": [],
+                "headings": [],
+                "images": [],
+                "has_tables": False,
+            })
 
-            if not extracted_page.text.strip():
+            page_text = "\n".join(data["text_parts"])
+            if not page_text.strip():
                 empty_text_pages += 1
 
-        # Capture metadata before closing
-        metadata = {
-            "format": doc.metadata.get("format", "") if hasattr(doc, "metadata") else "",
-            "title": doc.metadata.get("title", "") if hasattr(doc, "metadata") else "",
-            "author": doc.metadata.get("author", "") if hasattr(doc, "metadata") else "",
-        }
-
-        doc.close()
+            pages.append(ExtractedPage(
+                page_number=page_num,
+                text=page_text,
+                images=data["images"],
+                headings=data["headings"],
+                has_tables=data["has_tables"],
+            ))
 
         # Detect scanned PDFs (majority of pages have no text)
         total_pages = len(pages)
@@ -184,165 +315,82 @@ class PDFParser:
             empty_text_pages=empty_text_pages,
         )
 
+        # Capture metadata
+        metadata = {}
+        if hasattr(doc, "metadata"):
+            metadata = {
+                "title": getattr(doc.metadata, "title", "") or "",
+                "author": getattr(doc.metadata, "author", "") or "",
+            }
+
         return ParsedDocument(
             source_file=source_name,
             total_pages=total_pages,
             pages=pages,
             metadata=metadata,
+            docling_document=doc,  # Preserve for HybridChunker
         )
 
-    def _extract_page(self, page: fitz.Page, page_number: int) -> ExtractedPage:
-        """Extract text, images, and structure from a single page."""
-        # Extract text
-        text = page.get_text("text")
-
-        # Extract headings from text blocks with font-size heuristics
-        headings = self._detect_headings(page)
-
-        # Detect tables using pdfplumber-style heuristic (lines/rects)
-        has_tables = self._detect_tables(page)
-
-        # Extract images
-        images = self._extract_images(page, page_number)
-
-        return ExtractedPage(
-            page_number=page_number,
-            text=text,
-            images=images,
-            headings=headings,
-            has_tables=has_tables,
-        )
-
-    def _detect_headings(self, page: fitz.Page) -> List[Dict[str, str]]:
-        """
-        Detect headings using font size analysis.
-        Blocks with larger font sizes relative to the page's body text
-        are classified as headings.
-        """
-        headings = []
-        blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)["blocks"]
-
-        for block in blocks:
-            if block.get("type") != 0:  # Only text blocks
-                continue
-
-            for line in block.get("lines", []):
-                for span in line.get("spans", []):
-                    text = span.get("text", "").strip()
-                    font_size = span.get("size", 0)
-                    flags = span.get("flags", 0)
-                    is_bold = bool(flags & 2**4)  # Bold flag
-
-                    if not text or len(text) < 2:
-                        continue
-
-                    # Heuristic: headings are bold and/or have larger font size
-                    if font_size >= 16 and is_bold:
-                        headings.append({"level": "H1", "text": text})
-                    elif font_size >= 14 and is_bold:
-                        headings.append({"level": "H2", "text": text})
-                    elif font_size >= 12 and is_bold and len(text) < 120:
-                        headings.append({"level": "H3", "text": text})
-
-        return headings
-
-    def _detect_tables(self, page: fitz.Page) -> bool:
-        """
-        Heuristic table detection: look for grid-like arrangements
-        of horizontal and vertical lines.
-        """
-        drawings = page.get_drawings()
-        if not drawings:
-            return False
-
-        h_lines = 0
-        v_lines = 0
-        for d in drawings:
-            for item in d.get("items", []):
-                if item[0] == "l":  # line
-                    p1, p2 = item[1], item[2]
-                    dx = abs(p2.x - p1.x)
-                    dy = abs(p2.y - p1.y)
-                    if dx > 50 and dy < 5:
-                        h_lines += 1
-                    elif dy > 20 and dx < 5:
-                        v_lines += 1
-
-        # If we see a grid pattern, it's likely a table
-        return h_lines >= 3 and v_lines >= 2
-
-    def _extract_images(
-        self, page: fitz.Page, page_number: int
-    ) -> List[ExtractedImage]:
-        """
-        Extract embedded images from a page, filtering by minimum size
-        and skipping decorative elements.
-        """
-        images = []
-        image_list = page.get_images(full=True)
-
-        for img_index, img_info in enumerate(image_list):
-            xref = img_info[0]
-
-            try:
-                base_image = page.parent.extract_image(xref)
-                if not base_image:
-                    continue
-
-                image_bytes = base_image["image"]
-                width = base_image["width"]
-                height = base_image["height"]
-                ext = base_image.get("ext", "png")
-
-                # Filter: minimum resolution
-                if width < self._min_image_width or height < self._min_image_height:
-                    continue
-
-                # Filter: skip tiny decorative elements (icons, bullets)
-                area = width * height
-                if area < 15000:  # ~122x122 minimum useful area
-                    continue
-
-                # Filter: skip extreme aspect ratios (likely decorative bars)
-                aspect_ratio = max(width, height) / max(min(width, height), 1)
-                if aspect_ratio > 10:
-                    continue
-
-                # Try to get bounding box from page
-                bbox = self._get_image_bbox(page, xref)
-
-                images.append(
-                    ExtractedImage(
-                        image_bytes=image_bytes,
-                        page_number=page_number,
-                        bbox=bbox,
-                        width=width,
-                        height=height,
-                        image_index=img_index,
-                        extension=ext,
-                    )
-                )
-
-            except Exception as e:
-                logger.warning(
-                    "image_extraction_failed",
-                    page=page_number,
-                    image_index=img_index,
-                    error=str(e),
-                )
-                continue
-
-        return images
-
-    def _get_image_bbox(
-        self, page: fitz.Page, xref: int
-    ) -> Tuple[float, float, float, float]:
-        """Try to get bounding box for an image on the page."""
+    def _get_element_pages(self, element) -> List[int]:
+        """Extract page numbers from a Docling document element."""
         try:
-            for img_block in page.get_image_info():
-                if img_block.get("xref") == xref:
-                    bbox = img_block.get("bbox", (0, 0, 0, 0))
-                    return tuple(bbox)
+            if hasattr(element, "prov") and element.prov:
+                pages = []
+                for prov in element.prov:
+                    if hasattr(prov, "page_no"):
+                        pages.append(prov.page_no)
+                return pages if pages else [1]
+        except Exception:
+            pass
+        return [1]
+
+    def _get_element_bbox(self, element) -> Tuple[float, float, float, float]:
+        """Extract bounding box from a Docling document element."""
+        try:
+            if hasattr(element, "prov") and element.prov:
+                prov = element.prov[0]
+                if hasattr(prov, "bbox") and prov.bbox:
+                    bbox = prov.bbox
+                    return (bbox.l, bbox.t, bbox.r, bbox.b)
         except Exception:
             pass
         return (0.0, 0.0, 0.0, 0.0)
+
+    def _classify_heading_level(self, element) -> str:
+        """Classify a heading element into H1/H2/H3 based on Docling's label."""
+        label = str(getattr(element, "label", "")).lower()
+        if "section_header" in label or "title" in label:
+            # Docling uses nesting level for heading hierarchy
+            level = getattr(element, "level", 1)
+            if isinstance(level, int):
+                if level <= 1:
+                    return "H1"
+                elif level == 2:
+                    return "H2"
+                else:
+                    return "H3"
+        return "H3"
+
+    def _extract_image_bytes(self, element) -> Optional[bytes]:
+        """Extract raw image bytes from a Docling PictureItem."""
+        try:
+            img = element.get_image(doc=None)
+            if img is None and hasattr(element, "image"):
+                img = element.image
+            if img is None:
+                return None
+
+            # If it's a PIL Image, convert to bytes
+            if isinstance(img, Image.Image):
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                return buf.getvalue()
+
+            # If it's bytes already
+            if isinstance(img, bytes):
+                return img
+
+        except Exception as e:
+            logger.debug("image_extraction_failed", error=str(e))
+
+        return None

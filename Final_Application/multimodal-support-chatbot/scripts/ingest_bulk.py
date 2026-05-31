@@ -64,6 +64,11 @@ async def ingest_directory(directory_path: str):
             print(f"✅ Success! Chunks: {result.get('chunks_processed')}, Images: {result.get('images_processed')}")
             success_count += 1
         except Exception as e:
+            if "rate limit" in str(e).lower() or "Too Many Requests" in str(e) or "LLMRateLimitError" in str(type(e)):
+                print(f"\n⚠️  API Rate Limit Reached during '{pdf_file.name}'.")
+                print("🛑 Stopping bulk ingestion safely. All previous documents have been saved.")
+                break
+            
             print(f"❌ Failed to ingest {pdf_file.name}: {e}")
 
     print("\n" + "=" * 50)

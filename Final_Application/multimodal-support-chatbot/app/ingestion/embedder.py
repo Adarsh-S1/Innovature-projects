@@ -27,11 +27,11 @@ class TextEmbedder:
     def _ensure_model(self):
         """Lazy-load SentenceTransformer model."""
         if self._model is None:
-            logger.info("loading_sentence_transformer", model=self._settings.OPENAI_EMBEDDING_MODEL)
+            logger.info("loading_sentence_transformer", model=self._settings.TEXT_EMBEDDING_MODEL)
             try:
                 from sentence_transformers import SentenceTransformer
                 # Will automatically download on first run
-                self._model = SentenceTransformer(self._settings.OPENAI_EMBEDDING_MODEL)
+                self._model = SentenceTransformer(self._settings.TEXT_EMBEDDING_MODEL)
             except Exception as e:
                 logger.error("model_load_failed", error=str(e))
                 raise EmbeddingError(f"Failed to load sentence transformer model: {e}")

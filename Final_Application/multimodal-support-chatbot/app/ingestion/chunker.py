@@ -1,37 +1,27 @@
 """
-Semantic Text Chunker — splits PDF text into overlapping chunks
-with structural awareness.
+Semantic Text Chunker — splits PDF text into structure-aware chunks
+using Docling's HybridChunker.
 
-Chunking Rules:
-1. Respect section boundaries (H1/H2/H3 headings from PDF)
-2. Sliding window: 512 tokens, 128-token overlap
-3. Never split mid-sentence
-4. Preserve tables as single atomic chunks
-5. Tag each chunk with parent section + page range
+The HybridChunker combines:
+- Hierarchical document structure awareness (sections, headings, lists)
+- Token-limit-aware splitting/merging
+- Table header repetition across split chunks
+
+Falls back to a simple sliding-window chunker if no DoclingDocument
+is available (e.g. when called with raw text).
 """
 
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from uuid import uuid4
-
-import tiktoken
 
 from app.core.config import get_settings
 from app.core.exceptions import ChunkingError
 from app.core.logging import get_logger
-from app.ingestion.pdf_parser import ExtractedPage, ParsedDocument
+from app.ingestion.pdf_parser import ParsedDocument
 from app.models.domain import ChunkType, TextChunk
 
 logger = get_logger(__name__)
-
-# Sentence-ending pattern: period/question/exclamation followed by whitespace
-_SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
-
-# Table pattern heuristics
-_TABLE_PATTERN = re.compile(
-    r'(?:^\s*\|.*\|.*$\n?){3,}',  # Markdown-style tables
-    re.MULTILINE,
-)
 
 # Figure/diagram reference pattern
 _FIGURE_REF = re.compile(
@@ -42,18 +32,16 @@ _FIGURE_REF = re.compile(
 
 class SemanticChunker:
     """
-    Splits extracted PDF text into semantically coherent chunks
-    with heading-aware boundaries and configurable overlap.
+    Splits extracted PDF text into semantically coherent chunks.
+
+    Uses Docling's HybridChunker when a DoclingDocument is available,
+    falling back to a simple sliding-window approach otherwise.
     """
 
     def __init__(self):
         self._settings = get_settings()
         self._chunk_size = self._settings.CHUNK_SIZE_TOKENS
         self._chunk_overlap = self._settings.CHUNK_OVERLAP_TOKENS
-        try:
-            self._tokenizer = tiktoken.encoding_for_model("gpt-4o")
-        except Exception:
-            self._tokenizer = tiktoken.get_encoding("cl100k_base")
 
     def chunk_document(
         self,
@@ -64,6 +52,10 @@ class SemanticChunker:
     ) -> List[TextChunk]:
         """
         Chunk an entire parsed document into TextChunk objects.
+
+        If a DoclingDocument is available (from Docling parser), uses
+        HybridChunker for structure-aware chunking. Otherwise falls
+        back to simple text splitting.
 
         Args:
             document: Parsed PDF document from PDFParser.
@@ -80,293 +72,224 @@ class SemanticChunker:
             total_pages=document.total_pages,
         )
 
-        # Build section path tracker from headings
-        all_chunks: List[TextChunk] = []
-        current_section_path: List[str] = []
-
-        for page in document.pages:
-            # Update section path based on headings found on this page
-            current_section_path = self._update_section_path(
-                current_section_path, page.headings
+        if document.docling_document is not None:
+            chunks = self._chunk_with_docling(
+                document, doc_id, product_id, language
             )
-
-            # If page has tables, extract them as atomic chunks
-            if page.has_tables:
-                table_chunks = self._extract_table_chunks(
-                    page, doc_id, current_section_path, product_id, language, document.source_file
-                )
-                all_chunks.extend(table_chunks)
-
-            # Chunk the regular text
-            page_chunks = self._chunk_page_text(
-                page, doc_id, current_section_path, product_id, language, document.source_file
+        else:
+            chunks = self._chunk_fallback(
+                document, doc_id, product_id, language
             )
-            all_chunks.extend(page_chunks)
 
         # Deduplicate chunks with identical text
-        all_chunks = self._deduplicate_chunks(all_chunks)
+        chunks = self._deduplicate_chunks(chunks)
 
         logger.info(
             "chunking_completed",
             source_file=document.source_file,
-            total_chunks=len(all_chunks),
+            total_chunks=len(chunks),
         )
 
-        return all_chunks
+        return chunks
 
-    def _update_section_path(
-        self, current_path: List[str], headings: List[Dict[str, str]]
-    ) -> List[str]:
-        """Update the section hierarchy path based on detected headings."""
-        path = list(current_path)
-
-        for heading in headings:
-            level = heading["level"]
-            text = heading["text"].strip()
-
-            if level == "H1":
-                path = [text]
-            elif level == "H2":
-                path = path[:1] + [text]
-            elif level == "H3":
-                path = path[:2] + [text]
-
-        return path
-
-    def _chunk_page_text(
+    def _chunk_with_docling(
         self,
-        page: ExtractedPage,
+        document: ParsedDocument,
         doc_id: str,
-        section_path: List[str],
         product_id: Optional[str],
         language: str,
-        source_file: str,
     ) -> List[TextChunk]:
         """
-        Chunk text from a single page using sliding window
-        with sentence-boundary awareness.
-        """
-        text = page.text.strip()
-        if not text:
-            return []
+        Use Docling's HybridChunker for structure-aware chunking.
 
-        # Split into sentences
-        sentences = self._split_into_sentences(text)
-        if not sentences:
-            return []
+        HybridChunker respects document hierarchy (sections, headings,
+        lists, tables) while enforcing token limits.
+        """
+        from docling_core.transforms.chunker import HybridChunker
+
+        chunker = HybridChunker(
+            tokenizer="sentence-transformers/all-MiniLM-L6-v2",
+            max_tokens=self._chunk_size,
+            merge_peers=True,
+        )
+
+        doc = document.docling_document
+        docling_chunks = list(chunker.chunk(doc))
+
+        logger.info(
+            "docling_hybrid_chunking_completed",
+            raw_chunks=len(docling_chunks),
+        )
 
         chunks: List[TextChunk] = []
-        current_tokens: List[str] = []
-        current_sentences: List[str] = []
-        current_token_count = 0
-
-        for sentence in sentences:
-            sentence_tokens = self._tokenizer.encode(sentence)
-            sentence_token_count = len(sentence_tokens)
-
-            # If a single sentence exceeds chunk size, split it by words
-            if sentence_token_count > self._chunk_size:
-                # Flush current buffer first
-                if current_sentences:
-                    chunk_text = " ".join(current_sentences)
-                    chunks.append(self._create_chunk(
-                        text=chunk_text,
-                        doc_id=doc_id,
-                        page_start=page.page_number,
-                        page_end=page.page_number,
-                        section_path=section_path,
-                        product_id=product_id,
-                        language=language,
-                        source_file=source_file,
-                        chunk_type=ChunkType.PARAGRAPH,
-                    ))
-                    current_sentences = []
-                    current_token_count = 0
-
-                # Split long sentence
-                word_chunks = self._split_long_sentence(sentence)
-                for wc in word_chunks:
-                    chunks.append(self._create_chunk(
-                        text=wc,
-                        doc_id=doc_id,
-                        page_start=page.page_number,
-                        page_end=page.page_number,
-                        section_path=section_path,
-                        product_id=product_id,
-                        language=language,
-                        source_file=source_file,
-                        chunk_type=ChunkType.PARAGRAPH,
-                    ))
+        for dc in docling_chunks:
+            text = dc.text.strip() if hasattr(dc, "text") else ""
+            if not text or len(text) < 20:
                 continue
 
-            # Check if adding this sentence would exceed the chunk size
-            if current_token_count + sentence_token_count > self._chunk_size:
-                # Emit current chunk
-                if current_sentences:
+            # Determine page range from chunk metadata
+            page_start, page_end = self._get_chunk_pages(dc)
+
+            # Extract section path from chunk headings
+            section_path = self._get_section_path(dc)
+
+            # Classify chunk type
+            chunk_type = self._classify_chunk_type(dc)
+
+            chunks.append(TextChunk(
+                chunk_id=str(uuid4()),
+                doc_id=doc_id,
+                page_start=page_start,
+                page_end=page_end,
+                section_path=section_path,
+                text=text,
+                chunk_type=chunk_type,
+                metadata={
+                    "source_file": document.source_file,
+                    "product_id": product_id or "",
+                    "language": language,
+                    "chunk_type": chunk_type.value,
+                },
+            ))
+
+        return chunks
+
+    def _chunk_fallback(
+        self,
+        document: ParsedDocument,
+        doc_id: str,
+        product_id: Optional[str],
+        language: str,
+    ) -> List[TextChunk]:
+        """
+        Simple sliding-window fallback when no DoclingDocument is available.
+        Splits on sentence boundaries with configurable overlap.
+        """
+        import tiktoken
+
+        try:
+            tokenizer = tiktoken.encoding_for_model("gpt-4o")
+        except Exception:
+            tokenizer = tiktoken.get_encoding("cl100k_base")
+
+        chunks: List[TextChunk] = []
+
+        for page in document.pages:
+            text = page.text.strip()
+            if not text:
+                continue
+
+            # Split into sentences
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            sentences = [s.strip() for s in sentences if s.strip()]
+
+            current_sentences: List[str] = []
+            current_token_count = 0
+
+            for sentence in sentences:
+                sentence_tokens = len(tokenizer.encode(sentence))
+
+                if current_token_count + sentence_tokens > self._chunk_size and current_sentences:
                     chunk_text = " ".join(current_sentences)
-                    chunks.append(self._create_chunk(
-                        text=chunk_text,
+                    chunks.append(TextChunk(
+                        chunk_id=str(uuid4()),
                         doc_id=doc_id,
                         page_start=page.page_number,
                         page_end=page.page_number,
-                        section_path=section_path,
-                        product_id=product_id,
-                        language=language,
-                        source_file=source_file,
+                        section_path=[],
+                        text=chunk_text,
                         chunk_type=ChunkType.PARAGRAPH,
+                        metadata={
+                            "source_file": document.source_file,
+                            "product_id": product_id or "",
+                            "language": language,
+                            "chunk_type": ChunkType.PARAGRAPH.value,
+                        },
                     ))
 
-                    # Compute overlap: keep last N tokens worth of sentences
-                    overlap_sentences = self._compute_overlap_sentences(
-                        current_sentences
-                    )
+                    # Keep overlap
+                    overlap_sentences = []
+                    overlap_tokens = 0
+                    for s in reversed(current_sentences):
+                        t = len(tokenizer.encode(s))
+                        if overlap_tokens + t > self._chunk_overlap:
+                            break
+                        overlap_sentences.insert(0, s)
+                        overlap_tokens += t
                     current_sentences = overlap_sentences
-                    current_token_count = sum(
-                        len(self._tokenizer.encode(s)) for s in current_sentences
-                    )
+                    current_token_count = overlap_tokens
 
-            current_sentences.append(sentence)
-            current_token_count += sentence_token_count
+                current_sentences.append(sentence)
+                current_token_count += sentence_tokens
 
-        # Flush remaining
-        if current_sentences:
-            chunk_text = " ".join(current_sentences)
-            if len(self._tokenizer.encode(chunk_text)) >= 20:  # Skip very short tails
-                chunks.append(self._create_chunk(
-                    text=chunk_text,
-                    doc_id=doc_id,
-                    page_start=page.page_number,
-                    page_end=page.page_number,
-                    section_path=section_path,
-                    product_id=product_id,
-                    language=language,
-                    source_file=source_file,
-                    chunk_type=ChunkType.PARAGRAPH,
-                ))
-
-        return chunks
-
-    def _extract_table_chunks(
-        self,
-        page: ExtractedPage,
-        doc_id: str,
-        section_path: List[str],
-        product_id: Optional[str],
-        language: str,
-        source_file: str,
-    ) -> List[TextChunk]:
-        """
-        Extract table-like content as atomic chunks.
-        Tables are never split across chunk boundaries.
-        """
-        chunks = []
-        text = page.text
-
-        # Find table-like patterns (rows with consistent delimiters)
-        table_matches = _TABLE_PATTERN.finditer(text)
-
-        for match in table_matches:
-            table_text = match.group(0).strip()
-            if len(self._tokenizer.encode(table_text)) >= 10:
-                chunks.append(self._create_chunk(
-                    text=table_text,
-                    doc_id=doc_id,
-                    page_start=page.page_number,
-                    page_end=page.page_number,
-                    section_path=section_path,
-                    product_id=product_id,
-                    language=language,
-                    source_file=source_file,
-                    chunk_type=ChunkType.TABLE,
-                ))
+            # Flush remaining
+            if current_sentences:
+                chunk_text = " ".join(current_sentences)
+                if len(tokenizer.encode(chunk_text)) >= 20:
+                    chunks.append(TextChunk(
+                        chunk_id=str(uuid4()),
+                        doc_id=doc_id,
+                        page_start=page.page_number,
+                        page_end=page.page_number,
+                        section_path=[],
+                        text=chunk_text,
+                        chunk_type=ChunkType.PARAGRAPH,
+                        metadata={
+                            "source_file": document.source_file,
+                            "product_id": product_id or "",
+                            "language": language,
+                            "chunk_type": ChunkType.PARAGRAPH.value,
+                        },
+                    ))
 
         return chunks
 
-    def _split_into_sentences(self, text: str) -> List[str]:
-        """
-        Split text into sentences while preserving meaningful boundaries.
-        Handles abbreviations, decimal numbers, etc.
-        """
-        # Normalize whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
+    def _get_chunk_pages(self, dc) -> tuple:
+        """Extract page range from a Docling chunk."""
+        try:
+            if hasattr(dc, "meta") and dc.meta:
+                pages = []
+                for item in dc.meta:
+                    if hasattr(item, "prov") and item.prov:
+                        for prov in item.prov:
+                            if hasattr(prov, "page_no"):
+                                pages.append(prov.page_no)
+                if pages:
+                    return (min(pages), max(pages))
+        except Exception:
+            pass
+        return (1, 1)
 
-        if not text:
-            return []
+    def _get_section_path(self, dc) -> List[str]:
+        """Extract section headings path from a Docling chunk."""
+        try:
+            if hasattr(dc, "meta") and dc.meta:
+                headings = []
+                for item in dc.meta:
+                    if hasattr(item, "headings") and item.headings:
+                        headings.extend(item.headings)
+                return headings[:3]  # Max 3 levels deep
+        except Exception:
+            pass
+        return []
 
-        # Split on sentence boundaries
-        sentences = _SENTENCE_END.split(text)
-
-        # Filter empty sentences and strip
-        return [s.strip() for s in sentences if s.strip()]
-
-    def _split_long_sentence(self, sentence: str) -> List[str]:
-        """Split a sentence that exceeds max chunk size into word-level chunks."""
-        words = sentence.split()
-        chunks = []
-        current_words = []
-        current_count = 0
-
-        for word in words:
-            word_tokens = len(self._tokenizer.encode(word))
-            if current_count + word_tokens > self._chunk_size and current_words:
-                chunks.append(" ".join(current_words))
-                current_words = []
-                current_count = 0
-            current_words.append(word)
-            current_count += word_tokens
-
-        if current_words:
-            chunks.append(" ".join(current_words))
-
-        return chunks
-
-    def _compute_overlap_sentences(self, sentences: List[str]) -> List[str]:
-        """
-        Compute overlap by keeping trailing sentences up to the overlap token count.
-        """
-        if not sentences:
-            return []
-
-        overlap_tokens = 0
-        overlap_sentences = []
-
-        for sentence in reversed(sentences):
-            token_count = len(self._tokenizer.encode(sentence))
-            if overlap_tokens + token_count > self._chunk_overlap:
-                break
-            overlap_sentences.insert(0, sentence)
-            overlap_tokens += token_count
-
-        return overlap_sentences
-
-    def _create_chunk(
-        self,
-        text: str,
-        doc_id: str,
-        page_start: int,
-        page_end: int,
-        section_path: List[str],
-        product_id: Optional[str],
-        language: str,
-        source_file: str,
-        chunk_type: ChunkType,
-    ) -> TextChunk:
-        """Create a TextChunk domain object."""
-        return TextChunk(
-            chunk_id=str(uuid4()),
-            doc_id=doc_id,
-            page_start=page_start,
-            page_end=page_end,
-            section_path=list(section_path),
-            text=text,
-            chunk_type=chunk_type,
-            metadata={
-                "source_file": source_file,
-                "product_id": product_id or "",
-                "language": language,
-                "chunk_type": chunk_type.value,
-            },
-        )
+    def _classify_chunk_type(self, dc) -> ChunkType:
+        """Classify a Docling chunk into our ChunkType enum."""
+        try:
+            if hasattr(dc, "meta") and dc.meta:
+                for item in dc.meta:
+                    label = str(getattr(item, "label", "")).lower()
+                    if "table" in label:
+                        return ChunkType.TABLE
+                    elif "list" in label:
+                        return ChunkType.LIST
+                    elif "code" in label:
+                        return ChunkType.CODE_BLOCK
+                    elif "heading" in label or "title" in label:
+                        return ChunkType.HEADING
+        except Exception:
+            pass
+        return ChunkType.PARAGRAPH
 
     def _deduplicate_chunks(self, chunks: List[TextChunk]) -> List[TextChunk]:
         """Remove chunks with identical text content."""

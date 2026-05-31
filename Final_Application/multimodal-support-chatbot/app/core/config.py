@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     IMAGE_SEARCH_TOP_K: int = 10
     IMAGE_RETURN_TOP_K: int = 3
     CLIP_SIMILARITY_THRESHOLD: float = 0.25
-    CAPTION_SIMILARITY_THRESHOLD: float = 0.70
+    CAPTION_SIMILARITY_THRESHOLD: float = 0.40
 
     # ── Quality Guard ────────────────────────────────────────────────────
     QUALITY_THRESHOLD: float = 0.75

@@ -222,6 +222,11 @@ class IngestionPipeline:
             )
 
         except Exception as e:
+            from app.core.exceptions import LLMRateLimitError
+            if isinstance(e, LLMRateLimitError) or "RateLimit" in str(type(e)) or "rate limit" in str(e).lower():
+                logger.error("ingestion_pipeline_aborted_rate_limit", doc_id=doc_id)
+                raise  # Bubble up to stop bulk ingestion
+
             logger.error(
                 "ingestion_pipeline_failed",
                 doc_id=doc_id,
