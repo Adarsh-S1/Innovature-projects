@@ -237,7 +237,7 @@ class PDFParser:
 
                 # Filter: skip tiny decorative elements (icons, bullets)
                 area = width * height
-                if area < 15000:  # ~122x122 minimum useful area
+                if area < 10000:  # ~100x100 minimum useful area
                     continue
 
                 # Filter: skip extreme aspect ratios (likely decorative bars)

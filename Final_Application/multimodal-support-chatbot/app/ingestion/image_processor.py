@@ -275,13 +275,16 @@ class ImageProcessor:
                 # Fall back to local BLIP model
                 self._ensure_blip_model()
                 if getattr(self, "_blip_model", "dummy") == "dummy":
-                    raw_caption = "A technical image from a manual"
+                    raw_caption = ""
                 else:
                     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
                     inputs = self._blip_processor(img, return_tensors="pt").to(self._blip_device)
                     out = self._blip_model.generate(**inputs, max_new_tokens=50)
                     raw_caption = self._blip_processor.decode(out[0], skip_special_tokens=True)
                 caption_source = "blip_local"
+
+            if not raw_caption:
+                return self._fallback_caption()
 
             # Use Groq text model to format the raw caption into structured JSON
             prompt = (
@@ -330,12 +333,12 @@ class ImageProcessor:
             return self._fallback_caption()
 
     def _fallback_caption(self) -> Dict[str, Any]:
-        """Return fallback caption metadata when GPT-4o is unavailable."""
+        """Return fallback caption metadata when GPT-4o is unavailable or model fails."""
         return {
-            "caption": "Technical image from manual",
-            "description": "Image extracted from technical documentation.",
-            "keyword_tags": ["technical", "manual"],
-            "topic_concept": "technical_documentation",
+            "caption": "",
+            "description": "",
+            "keyword_tags": [],
+            "topic_concept": "",
             "image_type": "other",
         }
 

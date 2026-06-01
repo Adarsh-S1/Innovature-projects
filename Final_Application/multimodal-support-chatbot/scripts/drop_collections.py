@@ -33,11 +33,11 @@ async def drop_all_collections():
     else:
         print(f"⏭️ Collection {img_col} does not exist.")
 
-    # Drop MinIO bucket contents
-    print("🔌 Connecting to MinIO...")
+    # Drop RustFS bucket contents
+    print("🔌 Connecting to RustFS...")
     from app.db.rustfs_client import rustfs_manager
     await rustfs_manager.connect()
-    print(f"🗑️ Emptying MinIO bucket: {settings.RUSTFS_BUCKET_NAME}")
+    print(f"🗑️ Emptying RustFS bucket: {settings.RUSTFS_BUCKET_NAME}")
     await rustfs_manager.delete_directory("")
 
     print("\n✅ All collections and storage dropped successfully! The next time you run ingest_bulk.py, everything will be recreated fresh.")

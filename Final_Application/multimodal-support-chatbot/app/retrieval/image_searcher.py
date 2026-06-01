@@ -156,10 +156,14 @@ class ImageSearcher:
             img_type = meta.get("image_type", "other")
             type_bonus = _IMAGE_TYPE_BONUS.get(img_type, 0.3)
 
-            # Weighted composite (from Part 3 spec)
+            # Weighted composite (dynamically adjusting for missing signals)
+            if clip_sim > 0 and caption_sim > 0:
+                vector_sim = (clip_sim + caption_sim) / 2.0
+            else:
+                vector_sim = max(clip_sim, caption_sim)
+                
             composite = (
-                0.35 * clip_sim
-                + 0.35 * caption_sim
+                0.70 * vector_sim
                 + 0.20 * colocation
                 + 0.10 * type_bonus
             )
@@ -366,9 +370,13 @@ class ImageSearcher:
             img_type = img.get("image_type", "other")
             type_bonus = _IMAGE_TYPE_BONUS.get(img_type, 0.3)
 
+            if clip_sim > 0 and caption_sim > 0:
+                vector_sim = (clip_sim + caption_sim) / 2.0
+            else:
+                vector_sim = max(clip_sim, caption_sim)
+                
             composite = (
-                0.35 * clip_sim
-                + 0.35 * caption_sim
+                0.70 * vector_sim
                 + 0.20 * colocation
                 + 0.10 * type_bonus
             )

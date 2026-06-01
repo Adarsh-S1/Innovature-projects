@@ -167,7 +167,7 @@ class CrossModalLinker:
         self,
         chunks: List[TextChunk],
         images: List[ImageRecord],
-        threshold: float = 0.70,
+        threshold: float = 0.40,
     ) -> Dict[str, Set[str]]:
         """
         Strategy 2: Compute cosine similarity between chunk text vectors

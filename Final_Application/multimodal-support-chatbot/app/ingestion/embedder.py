@@ -52,7 +52,7 @@ class TextEmbedder:
         self._ensure_model()
 
         try:
-            embedding = self._model.encode(text)
+            embedding = self._model.encode(text, normalize_embeddings=True)
             return embedding.tolist()
 
         except Exception as e:
@@ -85,7 +85,7 @@ class TextEmbedder:
         )
 
         try:
-            embeddings = self._model.encode(texts, batch_size=batch_size, show_progress_bar=False)
+            embeddings = self._model.encode(texts, batch_size=batch_size, show_progress_bar=False, normalize_embeddings=True)
             logger.info(
                 "batch_embedding_completed",
                 total_embeddings=len(embeddings),

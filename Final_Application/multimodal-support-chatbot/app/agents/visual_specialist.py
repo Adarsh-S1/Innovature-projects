@@ -96,15 +96,56 @@ async def visual_specialist(state: AgentState) -> dict:
             "caption_score": img.caption_score,
         })
 
-    # If co-located images weren't found by the search, mark them
+    # If co-located images weren't found by the search, fetch them
     if colocated_image_ids:
         existing_ids = {img["image_id"] for img in retrieved_images}
         missing_colocated = colocated_image_ids - existing_ids
         if missing_colocated:
             logger.debug(
-                "colocated_images_not_in_search",
+                "fetching_colocated_images_from_milvus",
                 count=len(missing_colocated),
             )
+            try:
+                from app.db.milvus_client import milvus_manager
+                collection = milvus_manager.image_collection
+                if collection:
+                    collection.load()
+                    id_list_str = "[" + ", ".join(f'"{i}"' for i in missing_colocated) + "]"
+                    res = collection.query(
+                        expr=f"image_id in {id_list_str}",
+                        output_fields=[
+                            "image_id", "doc_id", "page_number", "caption",
+                            "description", "topic_concept", "keyword_tags",
+                            "image_type", "storage_url", "thumbnail_url",
+                            "source_file"
+                        ]
+                    )
+                    from app.retrieval.image_searcher import _IMAGE_TYPE_BONUS
+                    for hit in res:
+                        img_type = hit.get("image_type", "other")
+                        type_bonus = _IMAGE_TYPE_BONUS.get(img_type, 0.3)
+                        comp_score = 0.20 * 1.0 + 0.10 * type_bonus
+                        
+                        retrieved_images.append({
+                            "image_id": hit.get("image_id", ""),
+                            "doc_id": hit.get("doc_id", ""),
+                            "page_number": hit.get("page_number", -1),
+                            "caption": hit.get("caption", ""),
+                            "description": hit.get("description", ""),
+                            "image_type": img_type,
+                            "storage_url": hit.get("storage_url", ""),
+                            "thumbnail_url": hit.get("thumbnail_url", ""),
+                            "source_file": hit.get("source_file", ""),
+                            "composite_score": comp_score,
+                            "clip_score": 0.0,
+                            "caption_score": 0.0,
+                        })
+            except Exception as e:
+                logger.error("colocated_images_fetch_failed", error=str(e))
+                
+        # Re-sort and trim to Top-K in case colocated images outscore vector matches
+        retrieved_images.sort(key=lambda x: x["composite_score"], reverse=True)
+        retrieved_images = retrieved_images[:settings.IMAGE_RETURN_TOP_K]
 
     logger.info(
         "visual_specialist_completed",
