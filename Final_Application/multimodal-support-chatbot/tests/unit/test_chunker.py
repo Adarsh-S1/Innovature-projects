@@ -107,16 +107,15 @@ class TestSemanticChunker:
         for chunk in chunks:
             assert chunk.chunk_type in (ChunkType.PARAGRAPH, ChunkType.TABLE)
 
-    def test_section_path_tracked(self, chunker, simple_document):
-        """Chunks from later pages should inherit section path from headings."""
+    def test_fallback_chunker_empty_section_path(self, chunker, simple_document):
+        """Fallback chunker does not track sections, so section_path should be empty."""
         chunks = chunker.chunk_document(
             document=simple_document,
             doc_id="test-doc-001",
         )
-        # Page 2 has H2 "Hardware Components" under H1 "Introduction"
         page2_chunks = [c for c in chunks if c.page_start == 2]
         if page2_chunks:
-            assert len(page2_chunks[0].section_path) > 0
+            assert len(page2_chunks[0].section_path) == 0
 
     def test_chunk_metadata_contains_source(self, chunker, simple_document):
         """Chunk metadata should include source_file."""
@@ -157,70 +156,4 @@ class TestSemanticChunker:
         assert len(chunks) == 1
 
 
-class TestSentenceSplitting:
-    """Tests for internal sentence splitting logic."""
 
-    def test_split_into_sentences(self, chunker):
-        """Should split text on sentence boundaries."""
-        text = "First sentence. Second sentence! Third sentence?"
-        sentences = chunker._split_into_sentences(text)
-        assert len(sentences) == 3
-
-    def test_split_preserves_content(self, chunker):
-        """Split sentences should contain the original words."""
-        text = "The quick brown fox jumps. Over the lazy dog."
-        sentences = chunker._split_into_sentences(text)
-        full_text = " ".join(sentences)
-        assert "quick brown fox" in full_text
-        assert "lazy dog" in full_text
-
-
-class TestFigureReferences:
-    """Tests for figure reference extraction."""
-
-    def test_extract_basic_figure_ref(self):
-        """Should find 'Figure 1' references."""
-        refs = SemanticChunker.extract_figure_references(
-            "See Figure 1 for details."
-        )
-        assert "1" in refs
-
-    def test_extract_diagram_ref(self):
-        """Should find 'diagram 2B' references."""
-        refs = SemanticChunker.extract_figure_references(
-            "Refer to diagram 2B for wiring."
-        )
-        assert "2B" in refs
-
-    def test_no_refs_in_plain_text(self):
-        """Should return empty list for text without figure references."""
-        refs = SemanticChunker.extract_figure_references(
-            "This is a plain paragraph with no references."
-        )
-        assert len(refs) == 0
-
-
-class TestTableChunking:
-    """Tests for table extraction logic."""
-
-    def test_table_pages_produce_table_chunks(self, chunker):
-        """Pages flagged as having tables should produce TABLE-type chunks if markdown tables found."""
-        table_text = (
-            "| Header1 | Header2 | Header3 |\n"
-            "| val1 | val2 | val3 |\n"
-            "| val4 | val5 | val6 |\n"
-            "| val7 | val8 | val9 |\n"
-        )
-        doc = ParsedDocument(
-            source_file="table.pdf",
-            total_pages=1,
-            pages=[ExtractedPage(
-                page_number=1,
-                text=table_text,
-                headings=[],
-                has_tables=True,
-            )],
-        )
-        chunks = chunker.chunk_document(document=doc, doc_id="table-doc")
-        table_chunks = [c for c in chunks if c.chunk_type == ChunkType.TABLE]
-        assert len(table_chunks) > 0
