@@ -7,17 +7,34 @@ import { X, ZoomIn, ChevronLeft, ChevronRight } from 'lucide-react';
  */
 export default function ImageGallery({ images }) {
   const [lightboxIdx, setLightboxIdx] = useState(null);
+  const [zoomScale, setZoomScale] = useState(1);
 
-  const openLightbox = useCallback((idx) => setLightboxIdx(idx), []);
-  const closeLightbox = useCallback(() => setLightboxIdx(null), []);
+  const openLightbox = useCallback((idx) => {
+    setLightboxIdx(idx);
+    setZoomScale(1);
+  }, []);
+
+  const closeLightbox = useCallback(() => {
+    setLightboxIdx(null);
+    setZoomScale(1);
+  }, []);
 
   const goPrev = useCallback(() => {
     setLightboxIdx((prev) => (prev > 0 ? prev - 1 : images.length - 1));
+    setZoomScale(1);
   }, [images.length]);
 
   const goNext = useCallback(() => {
     setLightboxIdx((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+    setZoomScale(1);
   }, [images.length]);
+
+  const handleWheel = useCallback((e) => {
+    setZoomScale((prev) => {
+      const newScale = prev - e.deltaY * 0.005;
+      return Math.min(Math.max(1, newScale), 5); // Limit zoom between 1x and 5x
+    });
+  }, []);
 
   // Keyboard navigation
   React.useEffect(() => {
@@ -98,6 +115,15 @@ export default function ImageGallery({ images }) {
               src={images[lightboxIdx].url}
               alt={images[lightboxIdx].caption || 'Image'}
               className="lightbox-img"
+              onWheel={handleWheel}
+              style={{ 
+                transform: `scale(${zoomScale})`, 
+                transition: 'transform 0.1s ease-out',
+                cursor: zoomScale > 1 ? 'zoom-out' : 'zoom-in',
+                zIndex: zoomScale > 1 ? 50 : 'auto',
+                position: 'relative'
+              }}
+              onClick={() => setZoomScale(prev => prev === 1 ? 2 : 1)}
             />
 
             {/* Caption bar */}
