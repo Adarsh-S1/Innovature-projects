@@ -264,12 +264,12 @@ class IngestionPipeline:
                 if raw_bytes:
                     image_key = f"images/{doc_id}/{img_record.image_id}.{ext}"
                     img_record.storage_url = image_key
-                    self._upload_to_minio(raw_bytes, image_key, f"image/{ext}")
+                    self._upload_to_rustfs(raw_bytes, image_key, f"image/{ext}")
 
                 if thumb_bytes:
                     thumb_key = f"thumbs/{doc_id}/{img_record.image_id}_thumb.png"
                     img_record.thumbnail_url = thumb_key
-                    self._upload_to_minio(thumb_bytes, thumb_key, "image/png")
+                    self._upload_to_rustfs(thumb_bytes, thumb_key, "image/png")
 
                 # Remove raw bytes from metadata before Milvus storage
                 img_record.metadata.pop("raw_image_bytes", None)
@@ -375,7 +375,7 @@ class IngestionPipeline:
             collection.flush()
             logger.info("milvus_images_inserted", count=len(data))
 
-    def _upload_to_minio(
+    def _upload_to_rustfs(
         self,
         file_data: bytes,
         object_key: str,
@@ -383,16 +383,16 @@ class IngestionPipeline:
     ) -> None:
         """Upload a file to MinIO synchronously.
 
-        MinIOManager.upload_file() is declared async but uses synchronous
+        RustFSManager.upload_file() is declared async but uses synchronous
         boto3 internally. To avoid event loop conflicts in Celery or scripts
         that already have a running loop, we call the boto3 client directly.
         """
         import io
-        from app.db.minio_client import minio_manager
+        from app.db.rustfs_client import rustfs_manager
 
         try:
-            client = minio_manager.client  # raises if not connected
-            bucket = minio_manager._settings.MINIO_BUCKET_NAME
+            client = rustfs_manager.client  # raises if not connected
+            bucket = rustfs_manager._settings.RUSTFS_BUCKET_NAME
 
             client.put_object(
                 Bucket=bucket,
@@ -401,10 +401,10 @@ class IngestionPipeline:
                 ContentLength=len(file_data),
                 ContentType=content_type,
             )
-            logger.debug("minio_file_uploaded", key=object_key, bucket=bucket)
+            logger.debug("rustfs_file_uploaded", key=object_key, bucket=bucket)
         except Exception as e:
             logger.warning(
-                "minio_upload_failed",
+                "rustfs_upload_failed",
                 object_key=object_key,
                 error=str(e),
             )

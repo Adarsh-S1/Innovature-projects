@@ -35,10 +35,10 @@ async def drop_all_collections():
 
     # Drop MinIO bucket contents
     print("🔌 Connecting to MinIO...")
-    from app.db.minio_client import minio_manager
-    await minio_manager.connect()
-    print(f"🗑️ Emptying MinIO bucket: {settings.MINIO_BUCKET_NAME}")
-    await minio_manager.delete_directory("")
+    from app.db.rustfs_client import rustfs_manager
+    await rustfs_manager.connect()
+    print(f"🗑️ Emptying MinIO bucket: {settings.RUSTFS_BUCKET_NAME}")
+    await rustfs_manager.delete_directory("")
 
     print("\n✅ All collections and storage dropped successfully! The next time you run ingest_bulk.py, everything will be recreated fresh.")
     

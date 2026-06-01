@@ -227,7 +227,7 @@ async def _build_image_results(
     Generates presigned MinIO URLs so the frontend can securely
     display images without direct access to the storage backend.
     """
-    from app.db.minio_client import minio_manager
+    from app.db.rustfs_client import rustfs_manager
 
     results = []
     for img in response_images:
@@ -237,8 +237,8 @@ async def _build_image_results(
             thumbnail_url = img.get("thumbnail_url", "")
 
             try:
-                presigned_url = await minio_manager.get_presigned_url(storage_url) if storage_url else ""
-                presigned_thumb = await minio_manager.get_presigned_url(thumbnail_url) if thumbnail_url else ""
+                presigned_url = await rustfs_manager.get_presigned_url(storage_url) if storage_url else ""
+                presigned_thumb = await rustfs_manager.get_presigned_url(thumbnail_url) if thumbnail_url else ""
             except Exception:
                 logger.warning("presigned_url_failed", storage_url=storage_url)
                 presigned_url = storage_url

@@ -20,7 +20,7 @@ def client():
     # Mock Redis and Milvus before importing the app
     with patch("app.db.redis_client.redis_manager") as mock_redis, \
          patch("app.db.milvus_client.milvus_manager") as mock_milvus, \
-         patch("app.db.minio_client.minio_manager") as mock_minio:
+         patch("app.db.rustfs_client.rustfs_manager") as mock_minio:
 
         # Configure Redis mocks
         mock_redis.connect = AsyncMock()

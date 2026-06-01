@@ -7,7 +7,7 @@ from fastapi import APIRouter
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.db.milvus_client import milvus_manager
-from app.db.minio_client import minio_manager
+from app.db.rustfs_client import rustfs_manager
 from app.db.redis_client import redis_manager
 from app.models.response import HealthResponse
 
@@ -44,10 +44,10 @@ async def health_check() -> HealthResponse:
 
     # Check MinIO
     try:
-        minio_ok = await minio_manager.health_check()
-        services["minio"] = "healthy" if minio_ok else "unhealthy"
+        rustfs_ok = await rustfs_manager.health_check()
+        services["rustfs"] = "healthy" if rustfs_ok else "unhealthy"
     except Exception:
-        services["minio"] = "unhealthy"
+        services["rustfs"] = "unhealthy"
 
     # Determine overall status
     if all(v == "healthy" for v in services.values()):

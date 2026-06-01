@@ -82,12 +82,12 @@ class Settings(BaseSettings):
     REDIS_CACHE_TTL_SECONDS: int = 300     # 5 minutes
 
     # ── MinIO (S3-compatible) ────────────────────────────────────────────
-    MINIO_ENDPOINT: str = "localhost:9000"
-    MINIO_ACCESS_KEY: str = "minioadmin"
-    MINIO_SECRET_KEY: str = "minioadmin"
-    MINIO_BUCKET_NAME: str = "multimodal-chatbot"
-    MINIO_SECURE: bool = False
-    MINIO_PRESIGNED_URL_TTL: int = 3600  # 1 hour
+    RUSTFS_ENDPOINT: str = "localhost:9000"
+    RUSTFS_ACCESS_KEY: str = "rustfsadmin"
+    RUSTFS_SECRET_KEY: str = "rustfsadmin"
+    RUSTFS_BUCKET_NAME: str = "multimodal-chatbot"
+    RUSTFS_SECURE: bool = False
+    RUSTFS_PRESIGNED_URL_TTL: int = 3600  # 1 hour
 
     # ── Ingestion Pipeline ───────────────────────────────────────────────
     CHUNK_SIZE_TOKENS: int = 512

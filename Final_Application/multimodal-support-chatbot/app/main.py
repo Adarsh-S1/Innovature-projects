@@ -14,7 +14,7 @@ from app.core.config import get_settings
 from app.core.exceptions import ChatbotBaseException
 from app.core.logging import get_logger, setup_logging
 from app.db.milvus_client import milvus_manager
-from app.db.minio_client import minio_manager
+from app.db.rustfs_client import rustfs_manager
 from app.db.redis_client import redis_manager
 
 logger = get_logger(__name__)
@@ -51,10 +51,10 @@ async def lifespan(app: FastAPI):
         logger.warning("milvus_startup_failed", error=str(e))
 
     try:
-        await minio_manager.connect()
-        logger.info("minio_ready")
+        await rustfs_manager.connect()
+        logger.info("rustfs_ready")
     except Exception as e:
-        logger.warning("minio_startup_failed", error=str(e))
+        logger.warning("rustfs_startup_failed", error=str(e))
 
     logger.info("application_started")
     yield

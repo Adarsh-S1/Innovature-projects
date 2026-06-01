@@ -9,7 +9,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from app.ingestion.tasks import IngestionPipeline
 from app.db.milvus_client import milvus_manager
-from app.db.minio_client import minio_manager
+from app.db.rustfs_client import rustfs_manager
 from app.db.redis_client import redis_manager
 
 async def ingest_directory(directory_path: str):
@@ -17,7 +17,7 @@ async def ingest_directory(directory_path: str):
     print("🔌 Initializing database connections...")
     await milvus_manager.connect()
     await milvus_manager.ensure_collections()
-    await minio_manager.connect()
+    await rustfs_manager.connect()
     await redis_manager.connect()
     print("✅ Databases connected!")
     path = Path(directory_path)
@@ -45,8 +45,8 @@ async def ingest_directory(directory_path: str):
             # Remove any existing data for this document to prevent duplicates
             print(f"🧹 Removing old data for '{doc_id}' (if any)...")
             await milvus_manager.delete_document(doc_id)
-            await minio_manager.delete_directory(f"images/{doc_id}/")
-            await minio_manager.delete_directory(f"thumbs/{doc_id}/")
+            await rustfs_manager.delete_directory(f"images/{doc_id}/")
+            await rustfs_manager.delete_directory(f"thumbs/{doc_id}/")
             
             # Read PDF as bytes
             with open(pdf_file, "rb") as f:

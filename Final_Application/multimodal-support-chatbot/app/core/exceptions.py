@@ -143,8 +143,8 @@ class RedisConnectionError(DatabaseError):
     pass
 
 
-class MinIOError(DatabaseError):
-    """Raised when MinIO object storage operations fail."""
+class RustFSError(DatabaseError):
+    """Raised when RustFS object storage operations fail."""
     pass
 
 
