@@ -117,6 +117,43 @@ services:
     networks:
       - chatbot-net
 
+  # ── Celery Worker (Background PDF Processing) ──────────────────────────
+  celery_worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: chatbot-celery
+    # Override the default uvicorn command to run celery instead
+    command: [ "celery", "-A", "app.ingestion.tasks.celery_app", "worker", "--loglevel=info" ]
+    volumes:
+      # Mount your local code so changes reflect immediately without rebuilding
+      - ../app:/app/app
+      - ../scripts:/app/scripts
+    environment:
+      # Point to the Docker containers instead of localhost
+      - REDIS_HOST=redis
+      - MILVUS_HOST=milvus
+      - RUSTFS_ENDPOINT=rustfs:9000
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    networks:
+      - chatbot-net
+    # UNCOMMENT THIS BLOCK IF YOU HAVE NVIDIA DOCKER CONFIGURED FOR GPU ACCELERATION
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
 volumes:
   etcd_data:
   rustfs_data:

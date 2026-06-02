@@ -1,13 +1,15 @@
 import React, { useRef, useEffect } from 'react';
-import { Send, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Send, Paperclip, Loader2 } from 'lucide-react';
 
 /**
  * ChatInput — the message input area at the bottom.
  * Auto-growing textarea with send button.
  * Matches Claude.ai's centered, minimal input bar.
  */
-export default function ChatInput({ value, onChange, onSubmit, isLoading }) {
+export default function ChatInput({ value, onChange, onSubmit, isLoading, onFileUpload, isUploading }) {
   const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const disabled = isLoading || isUploading;
 
   // Auto-resize textarea
   useEffect(() => {
@@ -28,12 +30,26 @@ export default function ChatInput({ value, onChange, onSubmit, isLoading }) {
     <div className="chat-input-container">
       <form onSubmit={onSubmit} className="chat-input-form">
         <div className="chat-input-box">
+          <input
+            type="file"
+            accept="application/pdf"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              if (e.target.files && e.target.files[0]) {
+                onFileUpload(e.target.files[0]);
+              }
+              e.target.value = null;
+            }}
+          />
           <button
             type="button"
             className="chat-input-icon-btn"
-            title="Upload image (Demo)"
+            title="Upload PDF Document"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled}
           >
-            <ImageIcon className="w-5 h-5" />
+            <Paperclip className="w-5 h-5" />
           </button>
 
           <textarea
@@ -44,12 +60,12 @@ export default function ChatInput({ value, onChange, onSubmit, isLoading }) {
             placeholder="Message Nova AI..."
             className="chat-textarea"
             rows={1}
-            disabled={isLoading}
+            disabled={disabled}
           />
 
           <button
             type="submit"
-            disabled={!value.trim() || isLoading}
+            disabled={!value.trim() || disabled}
             className="chat-send-btn"
           >
             {isLoading ? (

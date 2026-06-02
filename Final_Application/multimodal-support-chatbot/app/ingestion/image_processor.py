@@ -56,14 +56,14 @@ class ImageProcessor:
         self._clip_preprocess = None
         self._clip_tokenizer = None
         self._clip_device = None
-        self._openai_client = None
+        self._groq_client = None
         self._seen_hashes: set = set()
 
     def _ensure_groq_client(self):
         """Lazy-load Groq client via shared singleton."""
-        if self._openai_client is None:
+        if self._groq_client is None:
             from app.core.shared import get_sync_groq_client
-            self._openai_client = get_sync_groq_client()
+            self._groq_client = get_sync_groq_client()
 
     def _ensure_blip_model(self):
         """Lazy-load BLIP model for local image captioning."""
@@ -294,7 +294,7 @@ class ImageProcessor:
                 "Based on this description, please generate the required JSON structure."
             )
 
-            response = self._openai_client.chat.completions.create(
+            response = self._groq_client.chat.completions.create(
                 model=self._settings.GROQ_MODEL,
                 messages=[
                     {"role": "system", "content": _CAPTION_SYSTEM_PROMPT},

@@ -45,6 +45,28 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
 )
 
+from celery.signals import worker_process_init
+import asyncio
+
+@worker_process_init.connect
+def init_celery_worker(**kwargs):
+    """Initialize database connections for the Celery worker process."""
+    from app.db.milvus_client import milvus_manager
+    from app.db.rustfs_client import rustfs_manager
+    from app.db.redis_client import redis_manager
+    
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+    loop.run_until_complete(redis_manager.connect())
+    loop.run_until_complete(rustfs_manager.connect())
+    loop.run_until_complete(milvus_manager.connect())
+    loop.run_until_complete(milvus_manager.ensure_collections())
+    logger.info("celery_worker_db_clients_initialized")
+
 
 # ── Synchronous Ingestion Pipeline ───────────────────────────────────────
 # This can be called directly (without Celery) for testing

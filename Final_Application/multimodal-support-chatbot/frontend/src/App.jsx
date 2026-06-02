@@ -14,6 +14,9 @@ export default function App() {
   const [sessionId, setSessionId] = useState(() =>
     Math.random().toString(36).substring(7)
   );
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  
   const messagesEndRef = useRef(null);
 
   // Auto-scroll to bottom on new messages
@@ -76,11 +79,76 @@ export default function App() {
     setInput(text);
   };
 
+  // ── File Upload ───────────────────────────────────────────────────
+  const handleFileUpload = async (file) => {
+    if (file.type !== 'application/pdf') {
+      alert("Only PDF files are supported");
+      return;
+    }
+    
+    setIsUploading(true);
+    setUploadProgress(10);
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      const res = await axios.post('http://localhost:8000/api/v1/ingest/pdf', formData);
+      const jobId = res.data.job_id;
+      
+      // Poll for status
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await axios.get(`http://localhost:8000/api/v1/ingest/status/${jobId}`);
+          const data = statusRes.data;
+          
+          if (data.status === 'success' || data.status === 'failed' || data.status === 'completed_with_errors') {
+            clearInterval(pollInterval);
+            setIsUploading(false);
+            
+            if (data.status === 'failed') {
+               alert(data.errors?.[0] || 'Upload failed');
+            } else {
+               setMessages(prev => [...prev, {
+                  role: 'assistant',
+                  content: `Successfully processed **${file.name}**. Extracted ${data.total_chunks} text chunks and ${data.total_images} images. You can now ask questions about it!`,
+               }]);
+            }
+          } else {
+            setUploadProgress(prev => (prev < 90 ? prev + 10 : prev));
+          }
+        } catch (err) {
+          clearInterval(pollInterval);
+          setIsUploading(false);
+          alert('Failed to check upload status');
+        }
+      }, 2000);
+      
+    } catch (error) {
+      setIsUploading(false);
+      alert(error.response?.data?.detail || 'Upload failed');
+    }
+  };
+
   return (
     <div className="app-layout">
       <Sidebar onNewChat={handleNewChat} />
 
-      <main className="chat-main">
+      <main className="chat-main" style={{ position: 'relative' }}>
+        {/* Upload Overlay */}
+        {isUploading && (
+          <div className="upload-overlay">
+            <div className="upload-modal">
+              <Loader2 className="w-8 h-8 animate-spin text-accent mb-4" />
+              <h3 className="upload-title">Processing Document</h3>
+              <p className="upload-subtitle">Extracting text and images...</p>
+              <div className="upload-progress-bar">
+                <div className="upload-progress-fill" style={{ width: `${uploadProgress}%` }} />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Messages area */}
         <div className="chat-messages-area">
           {messages.length === 0 ? (
@@ -116,6 +184,8 @@ export default function App() {
           onChange={setInput}
           onSubmit={handleSubmit}
           isLoading={isLoading}
+          isUploading={isUploading}
+          onFileUpload={handleFileUpload}
         />
       </main>
     </div>
