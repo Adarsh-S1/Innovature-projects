@@ -40,14 +40,26 @@ COPY --from=builder /install /usr/local
 COPY app/ ./app/
 COPY scripts/ ./scripts/
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash appuser
+# RapidOCR downloads ~40MB of PyTorch OCR weights into its own models/
+# directory on first use. Grant write access to ONLY that directory.
+RUN chown -R 1000:1000 /usr/local/lib/python3.11/site-packages/rapidocr/models/
+
+# ── Create non-root user ────────────────────────────────────────────────
+# Pre-create the HuggingFace cache directory so the Docker named volume
+# inherits appuser ownership on first mount (Docker named volume behaviour).
+RUN useradd --create-home --shell /bin/bash appuser && \
+    mkdir -p /home/appuser/.cache/huggingface && \
+    chown -R appuser:appuser /home/appuser/.cache
+
 USER appuser
 
-# Environment
+# ── Environment ─────────────────────────────────────────────────────────
+# HF_HOME tells all HuggingFace libraries (SentenceTransformers, Docling,
+# open_clip) to use the persistent Docker volume for model caching.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    HF_HOME=/home/appuser/.cache/huggingface
 
 EXPOSE 8000
 
@@ -55,3 +67,4 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+

@@ -24,6 +24,7 @@ dependencies = [
 
     # ── LLM ──────────────────────────────────────────────────────────
     "openai>=1.50",
+    "groq>=0.9",
 
     # ── Vector Database ──────────────────────────────────────────────
     "pymilvus>=2.4",
@@ -42,6 +43,10 @@ dependencies = [
     "torchvision>=0.15",
     "ftfy",
     "regex",
+    
+    # ── HuggingFace (Local Models) ───────────────────────────────────
+    "sentence-transformers>=3.0",
+    "transformers>=4.40",
 
     # ── Cache & Queue ────────────────────────────────────────────────
     "redis[hiredis]>=5.0",

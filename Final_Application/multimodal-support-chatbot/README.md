@@ -144,6 +144,3 @@ black app/ tests/
 # Run tests
 pytest tests/ -v
 ```
-
-## 📄 License
-MIT

@@ -79,13 +79,14 @@ class PDFParser:
         if self._converter is None:
             from docling.document_converter import DocumentConverter, PdfFormatOption
             from docling.datamodel.pipeline_options import PdfPipelineOptions
+            from docling.datamodel.base_models import InputFormat
 
             pipeline_options = PdfPipelineOptions()
             pipeline_options.generate_picture_images = True
 
             self._converter = DocumentConverter(
                 format_options={
-                    "pdf": PdfFormatOption(pipeline_options=pipeline_options),
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
                 }
             )
             logger.info("docling_converter_initialized")

@@ -129,6 +129,12 @@ services:
       # Mount your local code so changes reflect immediately without rebuilding
       - ../app:/app/app
       - ../scripts:/app/scripts
+      # Share the host's /tmp folder so Celery can read the PDFs uploaded by local FastAPI
+      - /tmp:/tmp
+      # Persistent named volume for HuggingFace AI models (industry standard)
+      - model_cache:/home/appuser/.cache/huggingface
+    env_file:
+      - ../.env
     environment:
       # Point to the Docker containers instead of localhost
       - REDIS_HOST=redis
@@ -159,6 +165,7 @@ volumes:
   rustfs_data:
   milvus_data:
   redis_data:
+  model_cache:
 
 networks:
   chatbot-net:
