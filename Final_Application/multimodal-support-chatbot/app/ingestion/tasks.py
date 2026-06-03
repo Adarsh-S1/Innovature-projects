@@ -170,9 +170,9 @@ class IngestionPipeline:
             )
 
             # ── Stage 4: Text Embedding ──────────────────────────────────
-            from app.ingestion.embedder import TextEmbedder
+            from app.core.shared import get_text_embedder
 
-            embedder = TextEmbedder()
+            embedder = get_text_embedder()
 
             # Embed text chunks
             chunk_texts = [chunk.text for chunk in chunks]

@@ -30,8 +30,16 @@ class TextEmbedder:
             logger.info("loading_sentence_transformer", model=self._settings.TEXT_EMBEDDING_MODEL)
             try:
                 from sentence_transformers import SentenceTransformer
-                # Will automatically download on first run
-                self._model = SentenceTransformer(self._settings.TEXT_EMBEDDING_MODEL)
+                try:
+                    # Try normal load (may contact HF Hub to check for updates)
+                    self._model = SentenceTransformer(self._settings.TEXT_EMBEDDING_MODEL)
+                except Exception:
+                    # Fallback: load from local cache only (avoids httpx client bugs)
+                    logger.warning("hub_load_failed_trying_local_cache")
+                    self._model = SentenceTransformer(
+                        self._settings.TEXT_EMBEDDING_MODEL,
+                        local_files_only=True,
+                    )
             except Exception as e:
                 logger.error("model_load_failed", error=str(e))
                 raise EmbeddingError(f"Failed to load sentence transformer model: {e}")
