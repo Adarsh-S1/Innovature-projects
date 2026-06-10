@@ -154,13 +154,13 @@ services:
     networks:
       - chatbot-net
     # UNCOMMENT THIS BLOCK IF YOU HAVE NVIDIA DOCKER CONFIGURED FOR GPU ACCELERATION
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
 
 volumes:
   etcd_data:

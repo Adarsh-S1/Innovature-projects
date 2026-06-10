@@ -1,0 +1,63 @@
+# ══════════════════════════════════════════════════════════════════════════
+# Multimodal Support Chatbot — Python Dependencies
+# Install: pip install -r requirements.txt
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── API Server ───────────────────────────────────────────────────────────
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+
+# ── Agent Orchestration ──────────────────────────────────────────────────
+langgraph>=0.2
+langchain>=0.3
+langchain-openai>=0.2
+langchain-community>=0.3
+
+# ── LLM Providers ────────────────────────────────────────────────────────
+openai>=1.50
+groq>=0.9
+
+# ── Vector Database ──────────────────────────────────────────────────────
+pymilvus>=2.4
+
+# ── PDF Processing (Docling) ─────────────────────────────────────────────
+docling>=2.0
+docling-core>=2.0
+
+# ── Image Processing ─────────────────────────────────────────────────────
+pillow>=10.4
+opencv-python-headless>=4.10
+
+# ── SigLIP via open_clip (Image Embeddings) ──────────────────────────────
+open-clip-torch>=2.24
+torch>=2.0
+torchvision>=0.15
+ftfy
+regex
+
+# ── HuggingFace (Local Models — Text Embeddings & BLIP Captioning) ───────
+sentence-transformers>=3.0
+transformers>=4.40
+
+# ── Cache & Queue ────────────────────────────────────────────────────────
+redis[hiredis]>=5.0
+celery[redis]>=5.4
+
+# ── Object Storage (S3-compatible — RustFS/MinIO) ────────────────────────
+boto3>=1.35
+
+# ── Data Validation ──────────────────────────────────────────────────────
+pydantic>=2.8
+pydantic-settings>=2.4
+
+# ── Logging & Observability ──────────────────────────────────────────────
+structlog>=24.4
+opentelemetry-sdk>=1.27
+
+# ── RAG Evaluation ───────────────────────────────────────────────────────
+ragas>=0.2
+
+# ── Utilities ────────────────────────────────────────────────────────────
+tenacity>=9.0
+httpx>=0.27
